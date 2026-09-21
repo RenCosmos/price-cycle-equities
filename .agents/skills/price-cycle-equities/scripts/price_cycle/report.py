@@ -8,6 +8,12 @@ from pathlib import Path
 import re
 import tempfile
 
+from .cycle import (
+    PHASE_DIRECTIONS,
+    PHASE_FAMILIES,
+    PHASES,
+    SOURCE_PHASE_FAMILIES,
+)
 from .models import (
     DataSet,
     FeatureRow,
@@ -19,9 +25,9 @@ from .market_rules import RuleResolutionStatus, rules_at
 from .parameters import ResearchParameters
 
 
-SCHEMA_VERSION = "1.0.0"
-ENGINE_VERSION = "0.1.0"
-STRATEGY_SPEC_VERSION = "1.0.0-draft"
+SCHEMA_VERSION = "1.0.1"
+ENGINE_VERSION = "0.1.1"
+STRATEGY_SPEC_VERSION = "1.0.1-draft"
 
 
 def sha256_file(path: str | Path) -> str:
@@ -69,6 +75,8 @@ def _evidence_json(items: tuple[object, ...]) -> list[object]:
 def _phase_json(assessment: PhaseAssessment) -> dict[str, object]:
     return {
         "phase": assessment.phase,
+        "phase_family": PHASE_FAMILIES[assessment.phase],
+        "directional_variant": PHASE_DIRECTIONS[assessment.phase],
         "score": round(assessment.score, 6),
         "confidence": assessment.confidence,
         "score_is_probability": False,
@@ -168,7 +176,17 @@ def build_report(
         warnings.append("MARKET_RULES_UNKNOWN")
 
     data_quality_status = "OK" if not warnings else "PARTIAL"
-    top = assessments[0] if assessments else None
+    supported_assessments = tuple(
+        assessment
+        for assessment in assessments
+        if assessment.confidence in {"LOW", "MEDIUM", "HIGH"}
+        and assessment.score > 0
+    )
+    top = (
+        max(supported_assessments, key=lambda assessment: assessment.score)
+        if supported_assessments
+        else None
+    )
     signal_time = events[-1].session_date.isoformat() if events else None
     config_hash = _config_hash(parameters)
     missing_capabilities = [
@@ -217,6 +235,13 @@ def build_report(
             "warnings": warnings,
             "missing_capabilities": missing_capabilities,
         },
+        "phase_taxonomy": {
+            "model": "six_source_families_eight_directional_candidates",
+            "source_families": list(SOURCE_PHASE_FAMILIES),
+            "source_family_count": len(SOURCE_PHASE_FAMILIES),
+            "directional_candidate_count": len(PHASES),
+            "provenance": "author_interpretation",
+        },
         "candidate_phases": [_phase_json(item) for item in assessments],
         "observed_events": [json_value(event) for event in events],
         "canslim": _canslim_unknowns(latest),
@@ -260,6 +285,7 @@ def build_report(
             "data_snapshot_id": input_sha256,
         },
         "_summary": {
+            "status": "SUPPORTED_CANDIDATE" if top else "NO_SUPPORTED_PHASE",
             "top_phase": top.phase if top else "UNKNOWN",
             "top_confidence": top.confidence if top else "UNKNOWN",
             "top_score": round(top.score, 6) if top else None,
@@ -291,6 +317,18 @@ def render_markdown(report: dict[str, object]) -> str:
     phases = report["candidate_phases"]
     canslim = report["canslim"]
     plan = report["trade_plan"]
+    if summary["status"] == "SUPPORTED_CANDIDATE":
+        conclusion = (
+            f"当前证据最支持 **{summary['top_phase']}**，"
+            f"置信度为 **{summary['top_confidence']}**，"
+            f"证据分数 {_fmt(summary['top_score'])}。"
+            "该分数不是上涨概率，CAN SLIM 与执行信息仍不完整。"
+        )
+    else:
+        conclusion = (
+            "当前无可确认阶段：八个方向化候选均未获得正证据支持，"
+            "因此结论保持 **UNKNOWN**。这不等于没有行情，只表示现有输入不足以支持阶段判断。"
+        )
 
     lines = [
         f"# {instrument['symbol']} 价格循环研究报告",
@@ -305,22 +343,24 @@ def render_markdown(report: dict[str, object]) -> str:
         "",
         "## 2. 一句话结论",
         "",
-        (
-            f"当前证据最支持 **{summary['top_phase']}**，"
-            f"置信度为 **{summary['top_confidence']}**，"
-            f"证据分数 {_fmt(summary['top_score'])}。"
-            "该分数不是上涨概率，CAN SLIM 与执行信息仍不完整。"
-        ),
+        conclusion,
         "",
         "## 3. 候选阶段",
         "",
-        "| 阶段 | 证据分数 | 置信度 | 支持 | 反证 | 未知 |",
-        "|---|---:|---|---:|---:|---:|",
+        (
+            "以下八行是从六个来源阶段家族展开的方向化候选；"
+            "方向展开属于本项目的工程解释。"
+        ),
+        "",
+        "| 候选阶段 | 来源阶段家族 | 方向 | 证据分数 | 置信度 | 支持 | 反证 | 未知 |",
+        "|---|---|---|---:|---|---:|---:|---:|",
     ]
     for phase in phases:
         lines.append(
-            "| {phase} | {score:.3f} | {confidence} | {supports} | {against} | {unknowns} |".format(
+            "| {phase} | {family} | {direction} | {score:.3f} | {confidence} | {supports} | {against} | {unknowns} |".format(
                 phase=phase["phase"],
+                family=phase["phase_family"],
+                direction=phase["directional_variant"],
                 score=phase["score"],
                 confidence=phase["confidence"],
                 supports=len(phase["evidence_for"]),

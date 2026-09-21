@@ -5,7 +5,14 @@ import unittest
 
 from tests.helpers import SCRIPT_ROOT
 
-from price_cycle.cycle import PHASES, assess_current, detect_events
+from price_cycle.cycle import (
+    PHASE_DIRECTIONS,
+    PHASE_FAMILIES,
+    PHASES,
+    SOURCE_PHASE_FAMILIES,
+    assess_current,
+    detect_events,
+)
 from price_cycle.models import Bar, FeatureRow
 
 
@@ -119,6 +126,28 @@ def up_crossback(index: int) -> FeatureRow:
 
 
 class CycleEvidenceTests(unittest.TestCase):
+    def test_six_source_families_expand_to_eight_directional_candidates(self) -> None:
+        self.assertEqual(set(PHASE_FAMILIES), set(PHASES))
+        self.assertEqual(set(PHASE_FAMILIES.values()), set(SOURCE_PHASE_FAMILIES))
+        self.assertEqual(len(PHASES), 8)
+        self.assertEqual(len(SOURCE_PHASE_FAMILIES), 6)
+        self.assertEqual(
+            {
+                phase
+                for phase, family in PHASE_FAMILIES.items()
+                if family == "EMA Crossback"
+            },
+            {"Upside EMA Crossback", "Downside EMA Crossback"},
+        )
+        self.assertEqual(
+            {
+                PHASE_DIRECTIONS[phase]
+                for phase, family in PHASE_FAMILIES.items()
+                if family == "Base n' Break"
+            },
+            {"upside", "downside"},
+        )
+
     def test_first_upside_crossback_is_consumed_once(self) -> None:
         rows = neutral_prefix()
         rows.append(wedge_pop(60))
@@ -134,6 +163,75 @@ class CycleEvidenceTests(unittest.TestCase):
         self.assertEqual(len(crossbacks), 1)
         self.assertEqual(crossbacks[0].bar_index, 62)
         self.assertIsNotNone(crossbacks[0].anchor_event_id)
+
+    def test_failed_upside_crossback_is_not_positive_phase_evidence(self) -> None:
+        rows = neutral_prefix()
+        rows.append(wedge_pop(60))
+        rows.append(
+            feature_row(
+                61,
+                close=104.5,
+                high=106.0,
+                low=104.0,
+                ema10=105.5,
+                ema20=105.0,
+                ema10_slope=0.003,
+                ema20_slope=0.002,
+                prior_high=112.0,
+                range_ratio=0.80,
+                volume_ratio=0.80,
+                distance=-0.25,
+            )
+        )
+        events = detect_events(tuple(rows), instrument_id="US:TEST")
+        crossback = next(
+            event
+            for event in events
+            if event.event_type == "UPSIDE_EMA_CROSSBACK"
+        )
+        self.assertEqual(dict(crossback.payload)["outcome"], "failed_or_mixed")
+        assessments = assess_current(tuple(rows), events)
+        phase = next(
+            item for item in assessments if item.phase == "Upside EMA Crossback"
+        )
+        self.assertIn(
+            "ECB-U-EVENT",
+            {item.rule_id for item in phase.evidence_against},
+        )
+        self.assertNotIn(
+            "ECB-U-EVENT",
+            {item.rule_id for item in phase.evidence_for},
+        )
+        self.assertEqual(phase.confidence, "NOT_SUPPORTED")
+
+    def test_unknown_upside_crossback_input_stays_unknown(self) -> None:
+        rows = neutral_prefix()
+        rows.append(wedge_pop(60))
+        rows.append(
+            feature_row(
+                61,
+                close=107.5,
+                high=108.0,
+                low=104.5,
+                ema10=105.5,
+                ema20=105.0,
+                ema10_slope=0.003,
+                ema20_slope=0.002,
+                prior_high=112.0,
+                range_ratio=0.80,
+                volume_ratio=None,
+                distance=1.25,
+            )
+        )
+        events = detect_events(tuple(rows), instrument_id="US:TEST")
+        assessments = assess_current(tuple(rows), events)
+        phase = next(
+            item for item in assessments if item.phase == "Upside EMA Crossback"
+        )
+        self.assertIn(
+            "ECB-U-EVENT",
+            {item.rule_id for item in phase.unknowns},
+        )
 
     def test_base_n_break_can_repeat_with_sequence_numbers(self) -> None:
         rows = neutral_prefix()
@@ -265,6 +363,130 @@ class CycleEvidenceTests(unittest.TestCase):
         ]
         self.assertEqual(len(crossbacks), 1)
         self.assertEqual(crossbacks[0].bar_index, 67)
+
+    def test_failed_downside_crossback_is_not_positive_phase_evidence(self) -> None:
+        rows = neutral_prefix()
+        rows.append(wedge_pop(60))
+        rows.extend(up_continuation(index) for index in range(61, 65))
+        rows.append(
+            feature_row(
+                65,
+                close=100.0,
+                high=102.0,
+                low=99.5,
+                ema10=105.0,
+                ema20=104.0,
+                ema10_slope=-0.01,
+                ema20_slope=-0.005,
+                prior_high=112.0,
+                range_ratio=1.1,
+                volume_ratio=1.3,
+                distance=-2.0,
+            )
+        )
+        rows.append(
+            feature_row(
+                66,
+                close=105.0,
+                high=106.0,
+                low=102.5,
+                ema10=103.5,
+                ema20=104.0,
+                ema10_slope=-0.005,
+                ema20_slope=-0.004,
+                prior_high=112.0,
+                prior_low=98.0,
+                range_ratio=0.8,
+                volume_ratio=0.8,
+                distance=0.5,
+            )
+        )
+        events = detect_events(tuple(rows), instrument_id="US:TEST")
+        crossback = next(
+            event
+            for event in events
+            if event.event_type == "DOWNSIDE_EMA_CROSSBACK"
+        )
+        self.assertEqual(dict(crossback.payload)["outcome"], "failed_or_mixed")
+        assessments = assess_current(tuple(rows), events)
+        phase = next(
+            item for item in assessments if item.phase == "Downside EMA Crossback"
+        )
+        self.assertIn(
+            "ECB-D-EVENT",
+            {item.rule_id for item in phase.evidence_against},
+        )
+        self.assertNotIn(
+            "ECB-D-EVENT",
+            {item.rule_id for item in phase.evidence_for},
+        )
+        self.assertEqual(phase.confidence, "NOT_SUPPORTED")
+
+    def test_wedge_drop_can_start_from_inferred_uptrend_context(self) -> None:
+        rows = [
+            feature_row(
+                index,
+                close=110.0,
+                high=111.0,
+                low=108.0,
+                ema10=105.5,
+                ema20=104.8,
+                ema10_slope=0.005,
+                ema20_slope=0.004,
+                prior_high=112.0,
+                range_ratio=0.90,
+                volume_ratio=0.90,
+                distance=1.5,
+            )
+            for index in range(60)
+        ]
+        rows.append(
+            feature_row(
+                60,
+                close=100.0,
+                high=105.0,
+                low=99.0,
+                ema10=104.5,
+                ema20=104.0,
+                ema10_slope=-0.005,
+                ema20_slope=-0.003,
+                prior_high=112.0,
+                range_ratio=1.10,
+                volume_ratio=1.30,
+                distance=-2.0,
+            )
+        )
+        events = detect_events(tuple(rows), instrument_id="US:TEST")
+        self.assertFalse(any(event.event_type == "WEDGE_POP" for event in events))
+        drops = [event for event in events if event.event_type == "WEDGE_DROP"]
+        self.assertEqual(len(drops), 1)
+        self.assertEqual(drops[0].bar_index, 60)
+        self.assertIsNone(drops[0].anchor_event_id)
+        self.assertEqual(
+            dict(drops[0].payload)["context_source"],
+            "inferred_previous_bar",
+        )
+
+    def test_wedge_drop_is_not_inferred_without_prior_uptrend_context(self) -> None:
+        rows = neutral_prefix()
+        rows.append(
+            feature_row(
+                60,
+                close=95.0,
+                high=101.0,
+                low=94.0,
+                ema10=100.0,
+                ema20=100.0,
+                ema10_slope=-0.005,
+                ema20_slope=-0.003,
+                prior_high=112.0,
+                range_ratio=1.10,
+                volume_ratio=1.30,
+                distance=-2.5,
+            )
+        )
+        events = detect_events(tuple(rows), instrument_id="US:TEST")
+        self.assertFalse(any(event.event_type == "WEDGE_DROP" for event in events))
 
     def test_prefix_replay_is_causal_and_ids_are_deterministic(self) -> None:
         rows = neutral_prefix()

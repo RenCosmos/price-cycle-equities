@@ -21,8 +21,11 @@
     instrument
     market_context
     data_quality
+    phase_taxonomy
     candidate_phases[]
       phase
+      phase_family
+      directional_variant
       confidence
       evidence_for[]
       evidence_against[]
@@ -36,10 +39,14 @@
 confidence 表达相对证据强弱，不是假装精确的成功概率。除非经过校准研究，不输出
 诸如“上涨概率 73%”的数字。
 
-候选阶段必须使用 strategy-spec 中的规范名称：Reversal Extension、Wedge Pop、
-Upside EMA Crossback、Upside Base n' Break、Exhaustion Extension、Wedge Drop、
-Downside EMA Crossback 或 Downside Base n' Break。不要用“阶段 1/2/3”代替，
-除非同时给出明确映射来源。
+候选阶段字段使用由六个来源阶段家族展开的八个工程名称：Reversal Extension、
+Wedge Pop、Upside EMA Crossback、Upside Base n' Break、Exhaustion Extension、
+Wedge Drop、Downside EMA Crossback 或 Downside Base n' Break。方向展开属于
+author_interpretation；不要把它称为 Oliver Kell 原始“八阶段”，也不要用
+“阶段 1/2/3”代替，除非同时给出明确映射来源。
+
+如果没有置信度为 LOW、MEDIUM 或 HIGH 且净证据分为正的候选，一句话结论必须为
+UNKNOWN，不得从 NOT_SUPPORTED 或 UNKNOWN 项中强选“最支持阶段”。
 
 不要默认加入 +1R、+2R、固定止盈百分比或固定分批比例。这些如被采用，必须显示为
 research_parameter 或 user_override，并同时给出不用该参数时的结构化管理方案。

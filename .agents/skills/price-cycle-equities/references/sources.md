@@ -22,3 +22,8 @@
 
 链接用于出处核查；本项目不复制或重新分发课程正文。来源内容发生变化时，更新
 strategy-spec 的 last_verified 和版本记录。
+
+Oliver Kell 当前个人网站将框架概括为六个 phase families；TraderLion 的完整循环
+资料另行描述上下行 EMA Crossback 与 Base n' Break。公开 Kell/TraderLion 资料支持
+成长股、盈利销售增长和相对强度思想，但本项目不据此宣称完整 CAN SLIM 七因子是
+Cycle 的原生组成部分。

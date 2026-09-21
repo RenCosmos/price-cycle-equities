@@ -25,6 +25,39 @@ PHASES = (
     "Downside Base n' Break",
 )
 
+SOURCE_PHASE_FAMILIES = (
+    "Reversal Extension",
+    "Wedge Pop",
+    "EMA Crossback",
+    "Base n' Break",
+    "Exhaustion Extension",
+    "Wedge Drop",
+)
+
+# Oliver Kell's public framework names six phase families. The deterministic
+# report expands the two direction-dependent families so evidence is explicit.
+PHASE_FAMILIES = {
+    "Reversal Extension": "Reversal Extension",
+    "Wedge Pop": "Wedge Pop",
+    "Upside EMA Crossback": "EMA Crossback",
+    "Upside Base n' Break": "Base n' Break",
+    "Exhaustion Extension": "Exhaustion Extension",
+    "Wedge Drop": "Wedge Drop",
+    "Downside EMA Crossback": "EMA Crossback",
+    "Downside Base n' Break": "Base n' Break",
+}
+
+PHASE_DIRECTIONS = {
+    "Reversal Extension": "not_applicable",
+    "Wedge Pop": "not_applicable",
+    "Upside EMA Crossback": "upside",
+    "Upside Base n' Break": "upside",
+    "Exhaustion Extension": "not_applicable",
+    "Wedge Drop": "not_applicable",
+    "Downside EMA Crossback": "downside",
+    "Downside Base n' Break": "downside",
+}
+
 EVENT_FOR_PHASE = {
     "Reversal Extension": "REVERSAL_EXTENSION",
     "Wedge Pop": "WEDGE_POP",
@@ -116,7 +149,7 @@ def _event_id(
             leg_id,
             anchor_event_id or "",
             str(sequence_no or ""),
-            "cycle-rules-v0.1",
+            "cycle-rules-v0.1.1",
         )
     )
     return sha256(raw.encode("utf-8")).hexdigest()[:20]
@@ -461,9 +494,22 @@ def detect_events(
         range_expansion = (
             None if row.range_ratio is None else row.range_ratio >= 1.0
         )
+        inferred_up_context = (
+            None
+            if previous is None
+            or _above_band(previous) is None
+            or _up_slopes(previous) is None
+            else _above_band(previous) and _up_slopes(previous)
+        )
+        if direction == "UP":
+            up_context = True
+        elif direction == "NONE":
+            up_context = inferred_up_context
+        else:
+            up_context = False
         wedge_drop_signal = _all_true(
             enough_history,
-            direction == "UP",
+            up_context,
             _below_band(row),
             previous_above_or_in_band,
             weak_close,
@@ -475,14 +521,22 @@ def detect_events(
         )
         wedge_drop_event: ObservedEvent | None = None
         if wedge_drop_signal:
+            had_active_up_leg = direction == "UP"
             down_leg_count += 1
-            previous_leg = current_leg
+            previous_leg = current_leg if had_active_up_leg else "INFERRED-UP-CONTEXT"
+            anchor = _latest_event(events, "WEDGE_POP") if had_active_up_leg else None
             current_leg = f"DOWN-{down_leg_count}"
             direction = "DOWN"
             down_crossback_consumed = False
             down_base_count = 0
             last_down_base_index = -10_000
             evidence = (
+                _item(
+                    "WD-UP-CONTEXT",
+                    up_context,
+                    "An active or immediately inferred uptrend context exists",
+                    provenance=Provenance.AUTHOR_INTERPRETATION,
+                ),
                 _item("WD-BAND", _below_band(row), "Price closed below the EMA band"),
                 _item("WD-CLOSE", weak_close, "The bar closed in a weak location"),
                 _item(
@@ -497,13 +551,16 @@ def detect_events(
                 row=row,
                 bar_index=index,
                 leg_id=current_leg,
-                anchor_event_id=(
-                    _latest_event(events, "WEDGE_POP").event_id
-                    if _latest_event(events, "WEDGE_POP")
-                    else None
-                ),
+                anchor_event_id=anchor.event_id if anchor else None,
                 sequence_no=None,
-                payload={"previous_leg": previous_leg},
+                payload={
+                    "context_source": (
+                        "active_wedge_pop_leg"
+                        if had_active_up_leg
+                        else "inferred_previous_bar"
+                    ),
+                    "previous_leg": previous_leg,
+                },
                 evidence=evidence,
             )
             events.append(wedge_drop_event)
@@ -600,6 +657,7 @@ def _assessment(
     params: ResearchParameters,
     *,
     hard_unknown: bool = False,
+    hard_not_supported: bool = False,
 ) -> PhaseAssessment:
     evidence_for = tuple(item for item in items if item.status is TriState.TRUE)
     evidence_against = tuple(item for item in items if item.status is TriState.FALSE)
@@ -612,6 +670,8 @@ def _assessment(
     support_weight = sum(item.weight for item in evidence_for)
     if hard_unknown or (not evidence_for and not evidence_against):
         confidence = "UNKNOWN"
+    elif hard_not_supported:
+        confidence = "NOT_SUPPORTED"
     elif support_weight == 0 or score <= 0:
         confidence = "NOT_SUPPORTED"
     elif score >= params.high_confidence_score and len(evidence_for) >= 4:
@@ -655,6 +715,45 @@ def assess_current(
             )
             is not None
         )
+
+    def recent_outcome(event_type: str) -> bool | None:
+        if not enough_history:
+            return None
+        event = _recent_event(
+            events,
+            event_type,
+            latest_index,
+            params.recent_event_window,
+        )
+        if event is None:
+            return False
+        outcome = dict(event.payload).get("outcome")
+        if outcome == "supported":
+            return True
+        if outcome == "failed_or_mixed":
+            required_rules = {
+                "UPSIDE_EMA_CROSSBACK": {
+                    "ECB-U-HOLD",
+                    "ECB-U-SLOPE",
+                    "ECB-U-VOLUME",
+                },
+                "DOWNSIDE_EMA_CROSSBACK": {
+                    "ECB-D-REJECT",
+                    "ECB-D-SLOPE",
+                    "ECB-D-VOLUME",
+                },
+            }.get(event_type, set())
+            required_evidence = tuple(
+                item for item in event.evidence if item.rule_id in required_rules
+            )
+            if len(required_evidence) != len(required_rules):
+                return None
+            if any(
+                item.status is TriState.UNKNOWN for item in required_evidence
+            ):
+                return None
+            return False
+        return None
 
     above = _above_band(row)
     below = _below_band(row)
@@ -721,6 +820,8 @@ def assess_current(
         else last_wedge_drop is not None
         and (last_wedge_pop is None or last_wedge_drop.bar_index > last_wedge_pop.bar_index)
     )
+    upside_crossback_outcome = recent_outcome("UPSIDE_EMA_CROSSBACK")
+    downside_crossback_outcome = recent_outcome("DOWNSIDE_EMA_CROSSBACK")
 
     phase_items: dict[str, tuple[EvidenceItem, ...]] = {
         "Reversal Extension": (
@@ -738,7 +839,7 @@ def assess_current(
         ),
         "Upside EMA Crossback": (
             _item("ECB-U-ANCHOR", active_up, "An active Wedge Pop leg exists", provenance=Provenance.AUTHOR_INTERPRETATION, weight=2),
-            _item("ECB-U-EVENT", recent("UPSIDE_EMA_CROSSBACK"), "A recent first upside EMA crossback exists", weight=2),
+            _item("ECB-U-EVENT", upside_crossback_outcome, "A recent supported first upside EMA crossback exists", weight=2),
             _item("ECB-U-TOUCH", _ema_touch(row, params.ema_touch_atr), "Price is testing the EMA band"),
             _item("ECB-U-HOLD", above if above is not None else None, "Price holds above the EMA band"),
             _item("ECB-U-SLOPE", up, "EMA slopes are positive"),
@@ -766,7 +867,7 @@ def assess_current(
         ),
         "Downside EMA Crossback": (
             _item("ECB-D-ANCHOR", active_down, "An active Wedge Drop leg exists", provenance=Provenance.AUTHOR_INTERPRETATION, weight=2),
-            _item("ECB-D-EVENT", recent("DOWNSIDE_EMA_CROSSBACK"), "A recent first downside EMA crossback exists", weight=2),
+            _item("ECB-D-EVENT", downside_crossback_outcome, "A recent supported first downside EMA crossback exists", weight=2),
             _item("ECB-D-TOUCH", _ema_touch(row, params.ema_touch_atr), "Price is testing the EMA band from below"),
             _item("ECB-D-REJECT", below, "Price remains below the EMA band"),
             _item("ECB-D-SLOPE", down, "EMA slopes are negative"),
@@ -785,12 +886,17 @@ def assess_current(
         "Upside EMA Crossback": not enough_history,
         "Downside EMA Crossback": not enough_history,
     }
+    hard_not_supported_phases = {
+        "Upside EMA Crossback": upside_crossback_outcome is False,
+        "Downside EMA Crossback": downside_crossback_outcome is False,
+    }
     assessments = tuple(
         _assessment(
             phase,
             phase_items[phase],
             params,
             hard_unknown=hard_unknown_phases.get(phase, False),
+            hard_not_supported=hard_not_supported_phases.get(phase, False),
         )
         for phase in PHASES
     )

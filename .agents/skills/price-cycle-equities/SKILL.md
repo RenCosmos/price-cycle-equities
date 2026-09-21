@@ -39,7 +39,7 @@ Always read [references/strategy-spec.md](references/strategy-spec.md) and
 1. State the as-of time, market, instrument, timeframe, and data source. Retrieve and timestamp any claim about current conditions.
 2. Treat missing data as UNKNOWN, never as zero, failure, or success.
 3. Treat the cycle as a repeatable, skippable, and sometimes ambiguous evidence model, not a rigid state machine. Return candidate phases, supporting evidence, contradictory evidence, and confidence.
-4. Treat price as primary, volume as confirmation, and moving averages as trend and risk references. CAN SLIM supplies selection evidence; it does not replace price action.
+4. Treat price as primary, volume as confirmation, and moving averages as trend and risk references. In this project, CAN SLIM supplies selection evidence; it does not replace price action or become a native Cycle phase.
 5. Separate source rules, author interpretation, market adaptation, research parameters, and user overrides.
 6. Never mix raw, adjusted, and tradable prices. Evaluate fundamentals by when they became known, not by period end.
 7. A TradePlan is conditional research output, not an order. Do not send or represent a live order without explicit authorization.
@@ -65,6 +65,10 @@ The analyzer produces JSON and Markdown research reports. Treat its event rules 
 thresholds as experimental research parameters, not validated trading edges. It does
 not retrieve live data, evaluate current exchange rules, size a position, or create an
 order. Review all UNKNOWN fields and warnings before explaining the result.
+
+The report keeps Oliver Kell's six public phase families distinct from the eight
+directional candidates used by this project's deterministic output. Do not describe
+the eight candidates as eight original Kell phases.
 
 Market-rule resolution is fail-closed. A resolved exchange snapshot still does not
 make a report execution-ready because the live calendar, instrument state, account,

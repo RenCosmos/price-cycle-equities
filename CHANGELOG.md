@@ -1,8 +1,19 @@
 # Changelog
 
+## 0.1.1 - 2026-09-21
+
+- 区分 Oliver Kell 公开框架的六个阶段家族与本项目的八个方向化候选，并澄清
+  CAN SLIM 是基于 William O'Neil/IBD 的项目级集成。
+- 修正失败或混合的 EMA Crossback 被当作正事件证据的问题；缺失信息继续保持 UNKNOWN。
+- 允许数据窗口从既有上升趋势中途开始时，以因果性的前一根价格与 EMA 背景识别
+  Wedge Drop，不再强制要求窗口内先出现 Wedge Pop。
+- 没有正证据支持的候选时，报告明确返回 UNKNOWN，不再强行选择排序第一项。
+- 为 JSON 增加阶段家族、方向变体和分类说明，补充对应回归测试并修正文档能力边界。
+
 ## 0.1.0 - 2026-09-21
 
-- 建立 Cycle of Price Action 八阶段证据规范与 CAN SLIM 三值输出。
+- 建立 Cycle of Price Action 六个来源阶段家族及八个方向化候选的证据规范，
+  并加入 CAN SLIM 三值输出。
 - 加入无第三方运行依赖的日线 CSV 分析器、结构化 JSON 和中文 Markdown 报告。
 - 支持 A 股与美股的带生效日期核心规则快照，并在信息不足或核验过期时 fail closed。
 - 加入 A 股 Wedge Pop、美股 Wedge Drop 合成黄金样例。

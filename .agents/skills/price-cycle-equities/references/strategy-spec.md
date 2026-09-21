@@ -1,6 +1,6 @@
 ---
 title: Price Cycle Equities Strategy Fact Specification
-spec_version: 1.0.0-draft
+spec_version: 1.0.1-draft
 scope: CN and US equities
 last_verified: 2026-09-21
 ---
@@ -20,7 +20,13 @@ last_verified: 2026-09-21
 | CORE-05 | 个股阶段应结合市场指数、行业和相对强度背景。 | source_rule |
 | CORE-06 | 固定百分比、ATR 倍数、量比或评分门槛，若没有明确出处，均为 research_parameter。 | author_interpretation |
 
-## 完整循环
+## 六个来源阶段家族与八个方向化候选
+
+Oliver Kell 当前公开框架命名六个阶段家族：Reversal Extension、Wedge Pop、
+EMA Crossback、Base n' Break、Exhaustion Extension 和 Wedge Drop。TraderLion
+的完整循环资料同时描述了 EMA Crossback 与 Base n' Break 的上行和下行用法。
+六个家族及其上下行用法属于 source_rule；为让程序输出方向明确，本项目把后两个
+家族按方向展开为固定八个候选，这一分类属于 author_interpretation。
 
     Reversal Extension
       → Wedge Pop
@@ -34,8 +40,9 @@ last_verified: 2026-09-21
 
 这是观察框架，不是刚性状态机。阶段可以重复、跳过、失败或暂时含混；下跌侧通常
 更快、更不规则。Wedge Drop 不要求之前一定出现 Exhaustion Extension；底部也可能
-是圆弧形，而非典型恐慌式 Reversal Extension。以上为 source_rule；允许多个候选
-阶段并存是 author_interpretation。
+是圆弧形，而非典型恐慌式 Reversal Extension。这些行为来自公开策略资料，属于
+source_rule；固定展开为八个方向化候选、允许多个候选同时输出，属于
+author_interpretation。
 
 ## 阶段定义
 
@@ -92,20 +99,25 @@ last_verified: 2026-09-21
 - BNB-D-02：均线继续形成阻力，价格跌破整理区，是下跌延续证据。source_rule
 - BNB-D-03：可重复发生，直至出现新的底部过程。source_rule
 
-## CAN SLIM 的位置
+## CAN SLIM 的项目集成位置
 
-Cycle 与 CAN SLIM 不是两个互不相关的机械模块。Kell 的方法根植于成长股、领导股
-和相对强度思想，再用价格行为循环处理时机和风险。
+Kell/TraderLion 的公开资料明确支持强势成长股、盈利与销售增长、相对强度以及
+价格和成交量主导决策，但现有公开资料不足以证明完整的 C/A/N/S/L/I/M 七因子是
+Cycle of Price Action 的原生机械评分模块。
+
+下表的 CAN SLIM 原始含义来自 William O'Neil/IBD，属于
+source_rule (CAN SLIM/IBD)；本项目将这些因素作为选股与背景证据，再由 Cycle
+处理时机与风险，属于 author_interpretation。
 
 | 因素 | 原始含义 | 本策略用途 | Provenance |
 |---|---|---|---|
-| C | 当前季度 EPS 与销售增长 | 近期成长加速证据 | source_rule |
-| A | 年度盈利增长与质量 | 长期成长记录 | source_rule |
-| N | 新产品、服务、管理层、产业变化或价格新高 | 催化和新趋势 | source_rule |
-| S | 供给与需求 | 流通供给、价格和成交量证据 | source_rule |
-| L | 领导股而非落后股 | 相对强度与同业比较 | source_rule |
-| I | 机构赞助 | 需求质量证据之一 | source_rule |
-| M | 市场方向 | 暴露和信号环境 | source_rule |
+| C | 当前季度 EPS 与销售增长 | 近期成长加速证据 | source_rule (CAN SLIM/IBD) |
+| A | 年度盈利增长与质量 | 长期成长记录 | source_rule (CAN SLIM/IBD) |
+| N | 新产品、服务、管理层、产业变化或价格新高 | 催化和新趋势 | source_rule (CAN SLIM/IBD) |
+| S | 供给与需求 | 流通供给、价格和成交量证据 | source_rule (CAN SLIM/IBD) |
+| L | 领导股而非落后股 | 相对强度与同业比较 | source_rule (CAN SLIM/IBD) |
+| I | 机构赞助 | 需求质量证据之一 | source_rule (CAN SLIM/IBD) |
+| M | 市场方向 | 暴露和信号环境 | source_rule (CAN SLIM/IBD) |
 
 实施约束：
 
