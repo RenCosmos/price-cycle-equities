@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0.0",
+  "description": "Synthetic research fixtures; not historical securities and not performance evidence.",
+  "cases": [
+    {
+      "id": "cn_wedge_pop",
+      "input": "cn_wedge_pop.csv",
+      "benchmark": "cn_benchmark.csv",
+      "benchmark_symbol": "CSI300_SYNTH",
+      "market": "CN",
+      "symbol": "CN_SYNTH",
+      "instrument_id": "CN:SYNTH:001",
+      "venue": "SSE",
+      "segment": "MAIN",
+      "security_type": "COMMON_STOCK",
+      "as_of": "2026-09-18",
+      "expected_events": [
+        {
+          "date": "2026-09-18",
+          "type": "WEDGE_POP"
+        }
+      ],
+      "expected_top_phase": "Wedge Pop",
+      "expected_top_confidence": "HIGH",
+      "expected_market_rules_status": "RESOLVED",
+      "expected_warnings": []
+    },
+    {
+      "id": "us_wedge_drop",
+      "input": "us_wedge_drop.csv",
+      "benchmark": "us_benchmark.csv",
+      "benchmark_symbol": "SPX_SYNTH",
+      "market": "US",
+      "symbol": "US_SYNTH",
+      "instrument_id": "US:SYNTH:001",
+      "venue": "XNAS",
+      "segment": null,
+      "security_type": "COMMON_STOCK",
+      "as_of": "2026-09-18",
+      "expected_events": [
+        {
+          "date": "2026-07-24",
+          "type": "WEDGE_POP"
+        },
+        {
+          "date": "2026-07-27",
+          "type": "UPSIDE_EMA_CROSSBACK"
+        },
+        {
+          "date": "2026-08-11",
+          "type": "EXHAUSTION_EXTENSION"
+        },
+        {
+          "date": "2026-09-18",
+          "type": "WEDGE_DROP"
+        }
+      ],
+      "expected_top_phase": "Wedge Drop",
+      "expected_top_confidence": "HIGH",
+      "expected_market_rules_status": "RESOLVED",
+      "expected_warnings": []
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Price Cycle Equities"
+  short_description: "Analyze A-share and U.S. equity price cycles"
+  default_prompt: "Use $price-cycle-equities to analyze an A-share or U.S. stock and produce an evidence-based trade plan."
