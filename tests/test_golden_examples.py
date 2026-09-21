@@ -14,7 +14,13 @@ from price_cycle.indicators import build_features
 from price_cycle.io import load_dataset
 from price_cycle.models import Bar, Market, PriceBasis
 from price_cycle.parameters import ResearchParameters
-from price_cycle.report import build_report, sha256_file
+from price_cycle.providers import (
+    CsvFileProvider,
+    DataRequest,
+    ProviderRegistry,
+    ProviderRouter,
+)
+from price_cycle.report import build_report
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -30,20 +36,28 @@ class GoldenExampleTests(unittest.TestCase):
         cls.cases = manifest["cases"]
 
     def _analyze(self, case: dict[str, object]):
-        dataset, diagnostics = load_dataset(
-            input_path=GOLDEN_ROOT / str(case["input"]),
-            benchmark_path=GOLDEN_ROOT / str(case["benchmark"]),
-            benchmark_symbol=str(case["benchmark_symbol"]),
+        request = DataRequest(
             symbol=str(case["symbol"]),
             instrument_id=str(case["instrument_id"]),
             market=Market(str(case["market"])),
             as_of=date.fromisoformat(str(case["as_of"])),
-            source="synthetic-golden",
             price_basis=PriceBasis.RAW,
             venue=str(case["venue"]),
             segment=(str(case["segment"]) if case["segment"] is not None else None),
             security_type=str(case["security_type"]),
+            benchmark_symbol=str(case["benchmark_symbol"]),
         )
+        provider = CsvFileProvider(
+            input_path=GOLDEN_ROOT / str(case["input"]),
+            benchmark_path=GOLDEN_ROOT / str(case["benchmark"]),
+            source_label="synthetic-golden",
+        )
+        loaded = ProviderRouter(ProviderRegistry((provider,))).load(
+            request,
+            (provider.provider_id,),
+        )
+        dataset = loaded.dataset
+        diagnostics = loaded.diagnostics
         parameters = ResearchParameters()
         features = build_features(dataset, parameters)
         events = detect_events(
@@ -59,8 +73,12 @@ class GoldenExampleTests(unittest.TestCase):
             assessments=assessments,
             events=events,
             parameters=parameters,
-            input_filename=str(case["input"]),
-            input_sha256=sha256_file(GOLDEN_ROOT / str(case["input"])),
+            input_filename=loaded.artifact_name,
+            input_sha256=next(
+                artifact.snapshot_id
+                for artifact in loaded.artifacts
+                if artifact.role == "instrument"
+            ),
         )
         return dataset, features, events, assessments, report
 

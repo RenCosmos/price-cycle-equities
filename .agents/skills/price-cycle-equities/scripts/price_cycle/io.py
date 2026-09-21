@@ -187,6 +187,15 @@ def load_dataset(
         "instrument_id_is_fallback": instrument_id is None,
         "benchmark_supplied": benchmark is not None,
         "benchmark_rows": len(benchmark.bars) if benchmark else 0,
+        "benchmark_input_rows": benchmark.total_rows if benchmark else 0,
+        "benchmark_usable_rows": len(benchmark.bars) if benchmark else 0,
+        "benchmark_excluded_after_as_of": (
+            benchmark.excluded_after_as_of if benchmark else 0
+        ),
+        "benchmark_excluded_not_yet_known": (
+            benchmark.excluded_not_yet_known if benchmark else 0
+        ),
+        "benchmark_input_reordered": benchmark.reordered if benchmark else False,
         "timestamp_policy": dataset.timestamp_policy,
     }
     return dataset, diagnostics

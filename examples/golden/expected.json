@@ -23,7 +23,11 @@
       "expected_top_phase": "Wedge Pop",
       "expected_top_confidence": "HIGH",
       "expected_market_rules_status": "RESOLVED",
-      "expected_warnings": []
+      "expected_warnings": [
+        "PRICE_BASIS_NOT_PROVIDER_VERIFIED",
+        "MARKET_DATA_SCOPE_NOT_PROVIDER_VERIFIED",
+        "VOLUME_QUALITY_NOT_PROVIDER_VERIFIED"
+      ]
     },
     {
       "id": "us_wedge_drop",
@@ -58,7 +62,11 @@
       "expected_top_phase": "Wedge Drop",
       "expected_top_confidence": "HIGH",
       "expected_market_rules_status": "RESOLVED",
-      "expected_warnings": []
+      "expected_warnings": [
+        "PRICE_BASIS_NOT_PROVIDER_VERIFIED",
+        "MARKET_DATA_SCOPE_NOT_PROVIDER_VERIFIED",
+        "VOLUME_QUALITY_NOT_PROVIDER_VERIFIED"
+      ]
     }
   ]
 }

@@ -7,7 +7,7 @@
 项目正在按“小步可验收”的方式建设。你不需要会 Python、Git 或命令行：
 Codex 负责创建、测试和排错，你只需要在关键节点确认策略含义和产品选择。
 
-当前开发版本：**v0.1.1**。
+当前开发版本：**v0.2.0-alpha.1**。
 
 ## 当前能做什么
 
@@ -17,12 +17,18 @@ Codex 负责创建、测试和排错，你只需要在关键节点确认策略�
 - 明确 A 股与美股在交易规则、数据口径和执行假设上的差异。
 - 读取日线 OHLCV CSV，确定性计算 EMA、SMA、ATR、相对强度和价格循环事件。
 - 同时生成便于阅读的 Markdown 报告与便于程序处理的 JSON 报告。
+- 通过统一 provider 接口加载数据，记录可信类别、来源尝试、回退路径、逐工件快照和
+  成交量质量，并在审计错误前清除 token、URL 与完整本机路径。
 
 当前版本不接实盘、不自动下单，也不提供收益保证。实时行情、全市场扫描、
 点时财务数据和回测仍在后续里程碑中。
 
 当前确定性分析器只接受日线 CSV，尚未生成或消费周线数据；周线在策略规范中
 保留为后续多周期能力。
+
+当前远程 provider 尚未启用：原 CSV 命令无需改变，也不会自行连接网站。数据源
+目录和后续接入顺序见
+[数据提供器与来源策略](.agents/skills/price-cycle-equities/references/data-providers.md)。
 
 ## 最简单的使用方式
 
@@ -68,12 +74,14 @@ python -m unittest discover -s tests -p "test_*.py" -v
     ├─ scripts/
     │  ├─ analyze.py
     │  └─ price_cycle/
+    │     └─ providers/
     └─ references/
        ├─ strategy-spec.md
        ├─ provenance-policy.md
        ├─ operating-modes.md
        ├─ output-contract.md
        ├─ data-contract.md
+       ├─ data-providers.md
        ├─ csv-analysis.md
        ├─ market-rules.md
        ├─ sources.md
@@ -85,8 +93,8 @@ python -m unittest discover -s tests -p "test_*.py" -v
 ## 建设路线
 
 详细里程碑见 [docs/ROADMAP.md](docs/ROADMAP.md)。策略规范、确定性计算核心、
-带生效日期的双市场规则层，以及 A/美股黄金样例均已完成；下一阶段将建设
-可切换、多源容错的数据获取层。
+带生效日期的双市场规则层、A/美股黄金样例，以及可切换数据层骨架均已完成；
+下一小步将实现首个需要用户显式配置的远程 provider。
 
 ## 重要边界
 

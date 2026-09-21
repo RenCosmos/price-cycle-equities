@@ -21,6 +21,25 @@
     instrument
     market_context
     data_quality
+      benchmark_rows_read
+      benchmark_rows_used
+      benchmark_future_rows_ignored
+      benchmark_not_yet_known_rows_ignored
+    data_lineage
+      selected_provider_id
+      source_label
+      assurance_mode
+      fallback_used
+      attempts[]
+      artifacts[]
+      price_basis_assertion
+      market_data_scope
+      volume_scope
+      volume_basis
+      volume_completeness
+      zero_volume_policy
+      artifact_name
+      data_snapshot_id
     phase_taxonomy
     candidate_phases[]
       phase
@@ -38,6 +57,12 @@
 
 confidence 表达相对证据强弱，不是假装精确的成功概率。除非经过校准研究，不输出
 诸如“上涨概率 73%”的数字。
+
+`data_lineage.attempts` 必须按优先级记录 SUCCESS、跳过或失败原因，
+并分别保存 retryable 与 fallback_allowed。错误文本不得包含 token、完整本机路径或
+带凭证的 URL。来源工件分别记录主标的和基准，不能只保留一个模糊的 source 字符串。
+旧式直接调用若没有基准工件标识，必须输出 UNKNOWN 基准工件并给出
+`BENCHMARK_LINEAGE_NOT_SUPPLIED`，不能伪造文件名或哈希。
 
 候选阶段字段使用由六个来源阶段家族展开的八个工程名称：Reversal Extension、
 Wedge Pop、Upside EMA Crossback、Upside Base n' Break、Exhaustion Extension、

@@ -25,6 +25,7 @@ class ReportTests(unittest.TestCase):
     def _report(
         self,
         assessments_override: tuple[PhaseAssessment, ...] | None = None,
+        diagnostics_override: dict[str, object] | None = None,
     ) -> dict[str, object]:
         bars = make_bars(220, step=0.25)
         benchmark = make_bars(220, start_close=200.0, step=0.20)
@@ -48,6 +49,8 @@ class ReportTests(unittest.TestCase):
             "input_reordered": False,
             "instrument_id_is_fallback": False,
         }
+        if diagnostics_override:
+            diagnostics.update(diagnostics_override)
         return build_report(
             dataset=dataset,
             diagnostics=diagnostics,
@@ -69,6 +72,7 @@ class ReportTests(unittest.TestCase):
             "instrument",
             "market_context",
             "data_quality",
+            "data_lineage",
             "phase_taxonomy",
             "candidate_phases",
             "observed_events",
@@ -79,6 +83,25 @@ class ReportTests(unittest.TestCase):
         }
         self.assertTrue(expected.issubset(report))
         self.assertEqual(len(report["candidate_phases"]), 8)
+        self.assertEqual(
+            report["data_lineage"]["selected_provider_id"],
+            "legacy_direct_io",
+        )
+        self.assertFalse(report["data_lineage"]["fallback_used"])
+        self.assertEqual(
+            {artifact["role"] for artifact in report["data_lineage"]["artifacts"]},
+            {"instrument", "benchmark"},
+        )
+        benchmark_artifact = next(
+            artifact
+            for artifact in report["data_lineage"]["artifacts"]
+            if artifact["role"] == "benchmark"
+        )
+        self.assertEqual(benchmark_artifact["lineage_status"], "UNKNOWN")
+        self.assertIn(
+            "BENCHMARK_LINEAGE_NOT_SUPPLIED",
+            report["data_quality"]["warnings"],
+        )
         self.assertEqual(
             {phase["phase_family"] for phase in report["candidate_phases"]},
             set(SOURCE_PHASE_FAMILIES),
@@ -126,6 +149,31 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(positions, sorted(positions))
         self.assertIn("### 候选阶段证据明细", markdown)
         self.assertIn("是否为订单：否", markdown)
+
+    def test_benchmark_filter_diagnostics_reach_report(self) -> None:
+        report = self._report(
+            diagnostics_override={
+                "benchmark_input_rows": 223,
+                "benchmark_usable_rows": 220,
+                "benchmark_excluded_after_as_of": 2,
+                "benchmark_excluded_not_yet_known": 1,
+                "benchmark_input_reordered": True,
+            }
+        )
+        warnings = report["data_quality"]["warnings"]
+        self.assertIn("BENCHMARK_INPUT_ROWS_REORDERED", warnings)
+        self.assertIn("BENCHMARK_ROWS_AFTER_AS_OF_EXCLUDED", warnings)
+        self.assertIn("BENCHMARK_ROWS_NOT_YET_KNOWN_EXCLUDED", warnings)
+        self.assertEqual(report["data_quality"]["benchmark_rows_read"], 223)
+        self.assertEqual(report["data_quality"]["benchmark_rows_used"], 220)
+        self.assertEqual(
+            report["data_quality"]["benchmark_future_rows_ignored"],
+            2,
+        )
+        self.assertEqual(
+            report["data_quality"]["benchmark_not_yet_known_rows_ignored"],
+            1,
+        )
 
     def test_summary_is_unknown_when_no_phase_has_positive_support(self) -> None:
         assessments = tuple(

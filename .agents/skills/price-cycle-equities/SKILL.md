@@ -24,6 +24,8 @@ Always read [references/strategy-spec.md](references/strategy-spec.md) and
 - For analysis workflows, read [references/operating-modes.md](references/operating-modes.md).
 - For reports, read [references/output-contract.md](references/output-contract.md).
 - When consuming market, fundamental, or backtest data, read [references/data-contract.md](references/data-contract.md).
+- When selecting, adding, or falling back between data sources, read
+  [references/data-providers.md](references/data-providers.md).
 - For A-shares, read [references/markets/cn-equities.md](references/markets/cn-equities.md).
 - For U.S. equities, read [references/markets/us-equities.md](references/markets/us-equities.md).
 - When evaluating dated trading constraints, read
@@ -61,10 +63,15 @@ Use the bundled analyzer for a dated daily-bar CSV instead of recomputing indica
 manually. Require market, symbol, as-of date, source, and price basis. A benchmark is
 optional, but its file and symbol must be supplied together.
 
-The analyzer produces JSON and Markdown research reports. Treat its event rules and
+The analyzer loads CSV through the provider-neutral data router, then produces JSON
+and Markdown research reports. Treat its event rules and
 thresholds as experimental research parameters, not validated trading edges. It does
 not retrieve live data, evaluate current exchange rules, size a position, or create an
 order. Review all UNKNOWN fields and warnings before explaining the result.
+
+Do not enable a remote provider without an explicit user choice and any required
+credentials or license. Reject partial-venue price or volume data, future-known rows,
+and silent price-basis changes before running Cycle evidence scoring.
 
 The report keeps Oliver Kell's six public phase families distinct from the eight
 directional candidates used by this project's deterministic output. Do not describe

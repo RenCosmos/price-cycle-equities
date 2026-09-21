@@ -111,3 +111,33 @@ valid_to。关键规则无法解析时 fail_closed：拒绝生成可执行订单
     execution_model_version
     config_hash
     data_snapshot_id
+
+## Provider 获取边界
+
+数据提供器与策略引擎必须隔离。统一调用链为：
+
+    DataRequest
+      → ProviderRegistry / ProviderRouter
+      → ProviderLoadResult
+      → DataSet
+      → 指标、事件与阶段判断
+
+每个结果必须记录 provider 尝试链和一个或多个 SourceArtifact。工件至少包含：
+
+    role, provider_id, source_label, artifact_name
+    snapshot_id, price_basis, market_data_scope
+    volume_scope, volume_basis, zero_volume_policy
+    timestamp_policy, retrieved_at, revision_id
+
+Provider 还必须在注册时声明 `assurance_mode`。只有
+`user_supplied_unverified` 类型可使用整组 `user_supplied_not_verified`
+质量值并保留 `volume_completeness=null`；`provider_verified` 类型不能借用这一
+豁免，且结果的价格口径必须由 provider 验证。
+
+Provider 不得计算或覆写策略指标。局部场所行情、成交量覆盖不足、缺失量填零、
+身份或价格口径不一致，以及标准化结果仍含未来数据，都属于硬失败；可以换用下一
+等价来源，但不得把不等价字段拼接后继续评分。原始导出中截止日后的行可以先排除并
+记录数量。少于 200 根历史、稍旧或无基准是软警告。
+
+`retryable` 表示是否适合同源重试；`fallback_allowed` 表示是否可换到
+独立来源，两者不得混为一个开关。

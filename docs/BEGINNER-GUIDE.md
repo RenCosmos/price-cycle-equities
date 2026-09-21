@@ -47,6 +47,12 @@ A 股示例：
 - `FALLBACK_INSTRUMENT_ID`：只用了市场加代码的临时身份。
 - `ADJUSTED_PRICE_POINT_IN_TIME_RISK`：复权数据可能含后来才知道的公司行动。
 - `MARKET_RULES_PARTIAL/UNKNOWN`：交易所、板块、日期覆盖或规则核验不完整。
+- `PRICE_BASIS_NOT_PROVIDER_VERIFIED`：手工 CSV 的复权口径是用户声明，系统无法自动证明。
+- `MARKET_DATA_SCOPE_NOT_PROVIDER_VERIFIED`：手工 CSV 无法证明是完整市场覆盖。
+- `VOLUME_QUALITY_NOT_PROVIDER_VERIFIED`：成交量覆盖、调整或零值语义尚未由 provider 证明。
+- `DATA_PROVIDER_FALLBACK_USED`：首选来源失败后使用了备用来源，应查看 data_lineage。
+- `BENCHMARK_LINEAGE_NOT_SUPPLIED`：旧式调用使用了基准数据，但没有提供可核验的
+  基准文件名或快照；报告会明确写 UNKNOWN，不会猜测。
 
 ## 第 4 步：需要时再补数据
 

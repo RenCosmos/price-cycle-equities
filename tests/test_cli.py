@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 from datetime import date, timedelta
+from hashlib import sha256
 import json
 import os
 from pathlib import Path
@@ -103,6 +104,55 @@ class CliTests(unittest.TestCase):
             self.assertTrue(markdown_path.is_file())
             payload = json_path.read_text(encoding="utf-8")
             report = json.loads(payload)
+            input_digest = sha256(bars_path.read_bytes()).hexdigest()
+            self.assertEqual(
+                report["instrument"]["input_sha256"],
+                input_digest,
+            )
+            self.assertEqual(
+                report["data_lineage"]["artifacts"][0]["snapshot_id"],
+                input_digest,
+            )
+            self.assertEqual(
+                report["data_lineage"]["data_snapshot_id"],
+                report["versions"]["data_snapshot_id"],
+            )
+            self.assertNotEqual(
+                report["data_lineage"]["data_snapshot_id"],
+                input_digest,
+            )
+            self.assertEqual(
+                report["data_lineage"]["selected_provider_id"],
+                "manual_csv",
+            )
+            self.assertEqual(
+                report["data_lineage"]["attempts"][0]["status"],
+                "SUCCESS",
+            )
+            self.assertEqual(
+                report["data_lineage"]["price_basis_assertion"],
+                "user_declared_not_verified",
+            )
+            self.assertEqual(
+                report["data_lineage"]["assurance_mode"],
+                "user_supplied_unverified",
+            )
+            self.assertEqual(
+                report["data_lineage"]["artifacts"][0]["role"],
+                "instrument",
+            )
+            self.assertIn(
+                "PRICE_BASIS_NOT_PROVIDER_VERIFIED",
+                report["data_quality"]["warnings"],
+            )
+            self.assertIn(
+                "MARKET_DATA_SCOPE_NOT_PROVIDER_VERIFIED",
+                report["data_quality"]["warnings"],
+            )
+            self.assertIn(
+                "VOLUME_QUALITY_NOT_PROVIDER_VERIFIED",
+                report["data_quality"]["warnings"],
+            )
             self.assertIn(
                 "ADJUSTED_PRICE_POINT_IN_TIME_RISK",
                 report["data_quality"]["warnings"],
@@ -162,7 +212,26 @@ class CliTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 3)
             self.assertIn("Data error", result.stderr)
+            self.assertIn("missing required columns", result.stderr)
             self.assertNotIn("Traceback", result.stderr)
+            self.assertFalse((root / "reports").exists())
+
+    def test_missing_csv_reports_safe_actionable_source_error(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            missing = root / "private" / "missing.csv"
+            result = self._run(
+                self._command(
+                    missing,
+                    root / "reports",
+                    date(2025, 1, 1),
+                )
+            )
+            self.assertEqual(result.returncode, 3)
+            self.assertIn("SOURCE_UNAVAILABLE", result.stderr)
+            self.assertIn("CSV artifacts are unavailable", result.stderr)
+            self.assertNotIn(str(missing), result.stderr)
+            self.assertFalse((root / "reports").exists())
 
 
 if __name__ == "__main__":

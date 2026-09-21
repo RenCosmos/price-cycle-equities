@@ -8,10 +8,17 @@ from typing import Sequence
 
 from .cycle import assess_current, detect_events
 from .indicators import build_features
-from .io import CsvDataError, load_dataset
+from .io import CsvDataError
 from .models import Market, PriceBasis
 from .parameters import ResearchParameters
-from .report import build_report, sha256_file, write_report_files
+from .providers import (
+    CsvFileProvider,
+    DataRequest,
+    ProviderRegistry,
+    ProviderResolutionError,
+    ProviderRouter,
+)
+from .report import build_report, write_report_files
 
 
 EXIT_OK = 0
@@ -123,20 +130,26 @@ def _validate_pairs(
 
 def run(arguments: argparse.Namespace) -> tuple[Path, Path, list[str]]:
     parameters = ResearchParameters()
-    dataset, diagnostics = load_dataset(
-        input_path=arguments.input,
+    request = DataRequest(
         symbol=arguments.symbol,
         market=arguments.market,
         as_of=arguments.as_of,
-        source=arguments.source,
         price_basis=arguments.price_basis,
         instrument_id=arguments.instrument_id,
         venue=arguments.venue,
         segment=arguments.segment,
         security_type=arguments.security_type,
-        benchmark_path=arguments.benchmark,
         benchmark_symbol=arguments.benchmark_symbol,
     )
+    provider = CsvFileProvider(
+        input_path=arguments.input,
+        source_label=arguments.source,
+        benchmark_path=arguments.benchmark,
+    )
+    registry = ProviderRegistry((provider,))
+    loaded = ProviderRouter(registry).load(request, (provider.provider_id,))
+    dataset = loaded.dataset
+    diagnostics = loaded.diagnostics
     features = build_features(dataset, parameters)
     events = detect_events(
         features,
@@ -151,8 +164,12 @@ def run(arguments: argparse.Namespace) -> tuple[Path, Path, list[str]]:
         assessments=assessments,
         events=events,
         parameters=parameters,
-        input_filename=Path(arguments.input).name,
-        input_sha256=sha256_file(arguments.input),
+        input_filename=loaded.artifact_name,
+        input_sha256=next(
+            artifact.snapshot_id
+            for artifact in loaded.artifacts
+            if artifact.role == "instrument"
+        ),
     )
     json_path, markdown_path = write_report_files(
         report,
@@ -169,7 +186,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     _validate_pairs(parser, arguments)
     try:
         json_path, markdown_path, warnings = run(arguments)
-    except CsvDataError as error:
+    except (CsvDataError, ProviderResolutionError) as error:
         print(f"Data error: {error}", file=sys.stderr)
         return EXIT_DATA
     except (FileExistsError, OSError, ValueError) as error:

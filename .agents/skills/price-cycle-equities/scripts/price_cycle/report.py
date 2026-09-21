@@ -25,8 +25,8 @@ from .market_rules import RuleResolutionStatus, rules_at
 from .parameters import ResearchParameters
 
 
-SCHEMA_VERSION = "1.0.1"
-ENGINE_VERSION = "0.1.1"
+SCHEMA_VERSION = "1.1.0"
+ENGINE_VERSION = "0.2.0-alpha.1"
 STRATEGY_SPEC_VERSION = "1.0.1-draft"
 
 
@@ -170,6 +170,65 @@ def build_report(
         warnings.append("BENCHMARK_NOT_SUPPLIED")
     if dataset.price_basis.value != "raw":
         warnings.append("ADJUSTED_PRICE_POINT_IN_TIME_RISK")
+    price_basis_assertion = str(
+        diagnostics.get(
+            "price_basis_assertion",
+            "caller_declared_not_verified",
+        )
+    )
+    if (
+        "price_basis_assertion" in diagnostics
+        and price_basis_assertion != "provider_verified"
+    ):
+        warnings.append("PRICE_BASIS_NOT_PROVIDER_VERIFIED")
+    market_data_scope = str(
+        diagnostics.get(
+            "market_data_scope",
+            "user_supplied_not_verified",
+        )
+    )
+    if (
+        "market_data_scope" in diagnostics
+        and market_data_scope != "full_listing"
+    ):
+        warnings.append("MARKET_DATA_SCOPE_NOT_PROVIDER_VERIFIED")
+    volume_scope = str(
+        diagnostics.get("volume_scope", "user_supplied_not_verified")
+    )
+    volume_basis = str(
+        diagnostics.get("volume_basis", "user_supplied_not_verified")
+    )
+    volume_completeness = diagnostics.get("volume_completeness")
+    zero_volume_policy = str(
+        diagnostics.get("zero_volume_policy", "user_supplied_not_verified")
+    )
+    if "volume_scope" in diagnostics and (
+        volume_scope != "full_listing"
+        or volume_basis not in {"raw", "split_adjusted"}
+        or volume_completeness != 1.0
+        or zero_volume_policy != "reported_zero_only"
+    ):
+        warnings.append("VOLUME_QUALITY_NOT_PROVIDER_VERIFIED")
+    fallback_used = bool(diagnostics.get("data_provider_fallback_used", False))
+    if fallback_used:
+        warnings.append("DATA_PROVIDER_FALLBACK_USED")
+    source_artifact_diagnostics = diagnostics.get("source_artifacts")
+    benchmark_lineage_supplied = (
+        isinstance(source_artifact_diagnostics, list)
+        and any(
+            isinstance(artifact, dict)
+            and artifact.get("role") == "benchmark"
+            for artifact in source_artifact_diagnostics
+        )
+    )
+    if dataset.benchmark_bars and not benchmark_lineage_supplied:
+        warnings.append("BENCHMARK_LINEAGE_NOT_SUPPLIED")
+    if diagnostics.get("benchmark_input_reordered"):
+        warnings.append("BENCHMARK_INPUT_ROWS_REORDERED")
+    if diagnostics.get("benchmark_excluded_after_as_of"):
+        warnings.append("BENCHMARK_ROWS_AFTER_AS_OF_EXCLUDED")
+    if diagnostics.get("benchmark_excluded_not_yet_known"):
+        warnings.append("BENCHMARK_ROWS_NOT_YET_KNOWN_EXCLUDED")
     if market_rules.status is RuleResolutionStatus.PARTIAL:
         warnings.append("MARKET_RULES_PARTIAL")
     elif market_rules.status is RuleResolutionStatus.UNKNOWN:
@@ -197,6 +256,72 @@ def build_report(
     ]
     if market_rules.status is not RuleResolutionStatus.RESOLVED:
         missing_capabilities.append("fully_resolved_dated_market_rule_snapshot")
+
+    selected_provider_id = str(
+        diagnostics.get("data_provider_id", "legacy_direct_io")
+    )
+    data_snapshot_id = str(
+        diagnostics.get("data_snapshot_id", input_sha256)
+    )
+    data_assurance_mode = str(
+        diagnostics.get("data_assurance_mode", "legacy_unspecified")
+    )
+    provider_attempts = diagnostics.get("data_provider_attempts")
+    if not isinstance(provider_attempts, list):
+        provider_attempts = [
+            {
+                "provider_id": selected_provider_id,
+                "priority": 1,
+                "status": "SUCCESS",
+                "error_code": None,
+                "message": None,
+                "retryable": None,
+                "fallback_allowed": None,
+            }
+        ]
+    source_artifacts_value = diagnostics.get("source_artifacts")
+    if isinstance(source_artifacts_value, list):
+        source_artifacts = list(source_artifacts_value)
+    else:
+        source_artifacts = [
+            {
+                "role": "instrument",
+                "provider_id": selected_provider_id,
+                "source_label": dataset.source,
+                "artifact_name": input_filename,
+                "snapshot_id": input_sha256,
+                "price_basis": dataset.price_basis.value,
+                "market_data_scope": market_data_scope,
+                "volume_scope": volume_scope,
+                "volume_basis": volume_basis,
+                "zero_volume_policy": zero_volume_policy,
+                "timestamp_policy": dataset.timestamp_policy,
+                "retrieved_at": None,
+                "revision_id": None,
+            }
+        ]
+    if dataset.benchmark_bars and not any(
+        isinstance(artifact, dict) and artifact.get("role") == "benchmark"
+        for artifact in source_artifacts
+    ):
+        source_artifacts.append(
+            {
+                "role": "benchmark",
+                "provider_id": selected_provider_id,
+                "source_label": dataset.source,
+                "artifact_name": "UNKNOWN",
+                "snapshot_id": "UNKNOWN",
+                "price_basis": dataset.price_basis.value,
+                "market_data_scope": "unknown",
+                "volume_scope": "unknown",
+                "volume_basis": "unknown",
+                "zero_volume_policy": "unknown",
+                "timestamp_policy": dataset.timestamp_policy,
+                "retrieved_at": None,
+                "revision_id": None,
+                "lineage_status": "UNKNOWN",
+            }
+        )
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -231,9 +356,38 @@ def build_report(
             "not_yet_known_rows_ignored": diagnostics.get(
                 "excluded_not_yet_known", 0
             ),
+            "benchmark_rows_read": diagnostics.get("benchmark_input_rows", 0),
+            "benchmark_rows_used": diagnostics.get(
+                "benchmark_usable_rows",
+                len(dataset.benchmark_bars),
+            ),
+            "benchmark_future_rows_ignored": diagnostics.get(
+                "benchmark_excluded_after_as_of",
+                0,
+            ),
+            "benchmark_not_yet_known_rows_ignored": diagnostics.get(
+                "benchmark_excluded_not_yet_known",
+                0,
+            ),
             "calendar_days_stale": calendar_days_stale,
             "warnings": warnings,
             "missing_capabilities": missing_capabilities,
+        },
+        "data_lineage": {
+            "selected_provider_id": selected_provider_id,
+            "source_label": dataset.source,
+            "assurance_mode": data_assurance_mode,
+            "fallback_used": fallback_used,
+            "attempts": provider_attempts,
+            "price_basis_assertion": price_basis_assertion,
+            "market_data_scope": market_data_scope,
+            "volume_scope": volume_scope,
+            "volume_basis": volume_basis,
+            "volume_completeness": volume_completeness,
+            "zero_volume_policy": zero_volume_policy,
+            "artifacts": source_artifacts,
+            "artifact_name": input_filename,
+            "data_snapshot_id": data_snapshot_id,
         },
         "phase_taxonomy": {
             "model": "six_source_families_eight_directional_candidates",
@@ -282,7 +436,7 @@ def build_report(
             "rulebook_version": market_rules.rule_version,
             "execution_model_version": "none",
             "config_hash": config_hash,
-            "data_snapshot_id": input_sha256,
+            "data_snapshot_id": data_snapshot_id,
         },
         "_summary": {
             "status": "SUPPORTED_CANDIDATE" if top else "NO_SUPPORTED_PHASE",
@@ -313,6 +467,7 @@ def render_markdown(report: dict[str, object]) -> str:
     instrument = report["instrument"]
     quality = report["data_quality"]
     context = report["market_context"]
+    lineage = report["data_lineage"]
     summary = report["_summary"]
     phases = report["candidate_phases"]
     canslim = report["canslim"]
@@ -338,6 +493,7 @@ def render_markdown(report: dict[str, object]) -> str:
         f"- 市场：{instrument['market']}",
         f"- 截止日期：{report['as_of']} 收盘后",
         f"- 数据来源：{instrument['source']}",
+        f"- 数据提供器：{lineage['selected_provider_id']}",
         f"- 价格口径：{instrument['price_basis']}",
         "- 本报告用于研究，不是交易订单，也不承诺收益。",
         "",
@@ -445,6 +601,16 @@ def render_markdown(report: dict[str, object]) -> str:
             f"- 最新数据日：{quality['latest_bar_date']}",
             f"- 距截止日：{quality['calendar_days_stale']} 个自然日",
             f"- 警告：{', '.join(quality['warnings']) if quality['warnings'] else '无'}",
+            f"- 是否发生来源回退：{'是' if lineage['fallback_used'] else '否'}",
+            f"- 价格口径验证：{lineage['price_basis_assertion']}",
+            f"- 行情覆盖范围：{lineage['market_data_scope']}",
+            (
+                "- 成交量质量："
+                f"scope={lineage['volume_scope']}, "
+                f"basis={lineage['volume_basis']}, "
+                f"completeness={_fmt(lineage['volume_completeness'])}, "
+                f"zero_policy={lineage['zero_volume_policy']}"
+            ),
             "",
             "## 8. 来源与参数",
             "",

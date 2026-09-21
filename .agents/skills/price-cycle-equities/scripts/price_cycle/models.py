@@ -90,6 +90,10 @@ class DataSet:
             self._validate_bar_sequence(self.benchmark_bars, "benchmark")
         if any(bar.session_date > self.as_of for bar in self.bars):
             raise ValueError("Dataset contains a bar after as_of")
+        if any(bar.session_date > self.as_of for bar in self.benchmark_bars):
+            raise ValueError("Dataset contains a benchmark bar after as_of")
+        if not self.timestamp_policy.strip():
+            raise ValueError("timestamp_policy is required")
 
     @staticmethod
     def _validate_bar_sequence(bars: tuple[Bar, ...], label: str) -> None:
