@@ -7,7 +7,7 @@
 项目正在按“小步可验收”的方式建设。你不需要会 Python、Git 或命令行：
 Codex 负责创建、测试和排错，你只需要在关键节点确认策略含义和产品选择。
 
-当前开发版本：**v0.2.0-alpha.1**。
+当前开发版本：**v0.2.0-alpha.2-dev.1**。
 
 ## 当前能做什么
 
@@ -19,6 +19,8 @@ Codex 负责创建、测试和排错，你只需要在关键节点确认策略�
 - 同时生成便于阅读的 Markdown 报告与便于程序处理的 JSON 报告。
 - 通过统一 provider 接口加载数据，记录可信类别、来源尝试、回退路径、逐工件快照和
   成交量质量，并在审计错误前清除 token、URL 与完整本机路径。
+- 离线校验显式 TOML 数据源路由；配置不保存密钥、不自动发现文件，也不会开启尚未
+  实现的远程来源。
 
 当前版本不接实盘、不自动下单，也不提供收益保证。实时行情、全市场扫描、
 点时财务数据和回测仍在后续里程碑中。
@@ -64,6 +66,15 @@ python .agents/skills/price-cycle-equities/scripts/analyze.py --input examples/i
 python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
+还可以单独检查数据源配置。此命令不联网，也不会改变 CSV 分析方式：
+
+```powershell
+python .agents/skills/price-cycle-equities/scripts/validate_provider_config.py --config examples/provider-config.toml.example
+```
+
+格式和凭证边界见
+[Provider 配置说明](.agents/skills/price-cycle-equities/references/provider-config.md)。
+
 完全合成的 A 股与美股黄金样例见 [examples/golden](examples/golden/README.md)。
 
 ## 目录
@@ -73,6 +84,7 @@ python -m unittest discover -s tests -p "test_*.py" -v
     ├─ agents/openai.yaml
     ├─ scripts/
     │  ├─ analyze.py
+    │  ├─ validate_provider_config.py
     │  └─ price_cycle/
     │     └─ providers/
     └─ references/
@@ -82,6 +94,7 @@ python -m unittest discover -s tests -p "test_*.py" -v
        ├─ output-contract.md
        ├─ data-contract.md
        ├─ data-providers.md
+       ├─ provider-config.md
        ├─ csv-analysis.md
        ├─ market-rules.md
        ├─ sources.md
@@ -93,7 +106,7 @@ python -m unittest discover -s tests -p "test_*.py" -v
 ## 建设路线
 
 详细里程碑见 [docs/ROADMAP.md](docs/ROADMAP.md)。策略规范、确定性计算核心、
-带生效日期的双市场规则层、A/美股黄金样例，以及可切换数据层骨架均已完成；
+带生效日期的双市场规则层、A/美股黄金样例、可切换数据层和安全配置骨架均已完成；
 下一小步将实现首个需要用户显式配置的远程 provider。
 
 ## 重要边界

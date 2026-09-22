@@ -233,6 +233,35 @@ class CliTests(unittest.TestCase):
             self.assertNotIn(str(missing), result.stderr)
             self.assertFalse((root / "reports").exists())
 
+    def test_source_url_or_private_path_is_rejected_without_disclosure(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bars_path = root / "bars.csv"
+            as_of = self._write_bars(bars_path, count=2)
+            markers = (
+                "https://example.test/private?token=fixture-secret",
+                "C:/Users/alice/private-source.csv",
+            )
+            for index, marker in enumerate(markers):
+                with self.subTest(index=index):
+                    result = self._run(
+                        self._command(
+                            bars_path,
+                            root / f"reports-{index}",
+                            as_of,
+                            "--source",
+                            marker,
+                        )
+                    )
+                    self.assertEqual(result.returncode, 3)
+                    self.assertIn(
+                        "INVALID_PROVIDER_CONFIGURATION",
+                        result.stderr,
+                    )
+                    self.assertNotIn(marker, result.stderr)
+                    self.assertNotIn("fixture-secret", result.stderr)
+                    self.assertNotIn("Traceback", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

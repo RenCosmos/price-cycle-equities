@@ -28,7 +28,8 @@ CSV 必须采用 UTF-8，并包含：
 - `market`：`CN` 或 `US`。
 - `symbol`：报告展示代码。
 - `as_of`：分析截止日。
-- `source`：数据来自哪里，例如 `broker-export`。
+- `source`：数据来自哪里，例如 `broker-export`。它必须是简短公开标签；不要填写
+  URL、本机路径、token 或认证头，否则分析会安全停止，避免把敏感内容写进报告。
 - `price_basis`：`raw`、`split_adjusted` 或 `total_return`。
 - `instrument_id`：最好是稳定的挂牌标识；省略时使用 `MARKET:symbol`，报告会警告。
 - `venue`：交易所，例如 `SSE`、`SZSE`、`BSE`、`XNYS` 或 `XNAS`。

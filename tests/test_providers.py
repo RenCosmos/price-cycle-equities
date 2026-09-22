@@ -4,6 +4,7 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 import tempfile
+import traceback
 import unittest
 
 from tests.helpers import SCRIPT_ROOT, make_bars, make_dataset
@@ -132,6 +133,18 @@ def result_for(
 
 
 class ProviderRoutingTests(unittest.TestCase):
+    def test_invalid_provider_order_returns_stable_resolution_error(self) -> None:
+        router = ProviderRouter(ProviderRegistry(()))
+        for order in (("Bad Provider",), "manual_csv"):
+            with self.subTest(order=order):
+                with self.assertRaises(ProviderResolutionError) as caught:
+                    router.load(request_for(), order)
+                self.assertEqual(
+                    caught.exception.code,
+                    "INVALID_PROVIDER_ORDER",
+                )
+                self.assertEqual(caught.exception.attempts, ())
+
     def test_manual_csv_provider_preserves_legacy_dataset(self) -> None:
         for market in (Market.CN, Market.US):
             with self.subTest(market=market.value), tempfile.TemporaryDirectory() as directory:
@@ -319,6 +332,11 @@ class ProviderRoutingTests(unittest.TestCase):
         dataset = make_dataset(make_bars(220))
         first_marker = "fixture-" + "token-value"
         second_marker = "fixture-" + "key-value"
+        third_marker = "fixture-" + "prefixed-token-value"
+        fourth_marker = "fixture-" + "bearer-value"
+        fifth_marker = "fixture-" + "basic-value"
+        sixth_marker = "fixture-" + "proxy-token-value"
+        seventh_marker = "fixture-" + "cookie-value"
         sensitive_path = "C:" + "/Users/alice/private.csv"
         unsafe_message = (
             "fetch https://example.test/data?"
@@ -329,6 +347,16 @@ class ProviderRoutingTests(unittest.TestCase):
             + " api_"
             + "key="
             + second_marker
+            + " TUSHARE_TOKEN="
+            + third_marker
+            + " Authorization: Bearer "
+            + fourth_marker
+            + "; Authorization: Basic "
+            + fifth_marker
+            + "; Proxy-Authorization: Token "
+            + sixth_marker
+            + "; Cookie: session="
+            + seventh_marker
         )
         unsafe = FakeProvider(
             "unsafe",
@@ -346,9 +374,227 @@ class ProviderRoutingTests(unittest.TestCase):
         audited = str(routed.diagnostics["data_provider_attempts"])
         self.assertNotIn(first_marker, audited)
         self.assertNotIn(second_marker, audited)
+        self.assertNotIn(third_marker, audited)
+        self.assertNotIn(fourth_marker, audited)
+        self.assertNotIn(fifth_marker, audited)
+        self.assertNotIn(sixth_marker, audited)
+        self.assertNotIn(seventh_marker, audited)
         self.assertNotIn(sensitive_path, audited)
         self.assertNotIn("https://example.test", audited)
         self.assertIn("[REDACTED", audited)
+
+    def test_raw_provider_exceptions_are_not_chained_into_public_errors(self) -> None:
+        marker = "fixture-" + "terminal-secret"
+        dataset = make_dataset(make_bars(220))
+
+        class SupportExplosion:
+            provider_id = "support_explosion"
+            assurance_mode = DataAssuranceMode.PROVIDER_VERIFIED
+
+            def supports(self, request: DataRequest) -> bool:
+                del request
+                raise RuntimeError("Authorization: Basic " + marker)
+
+            def load(self, request: DataRequest) -> ProviderLoadResult:
+                del request
+                raise AssertionError("unreachable")
+
+        class LoadExplosion:
+            provider_id = "load_explosion"
+            assurance_mode = DataAssuranceMode.PROVIDER_VERIFIED
+
+            def supports(self, request: DataRequest) -> bool:
+                del request
+                return True
+
+            def load(self, request: DataRequest) -> ProviderLoadResult:
+                del request
+                raise RuntimeError("TUSHARE_TOKEN=" + marker)
+
+        providers = (
+            FakeProvider(
+                "terminal",
+                failure=ProviderFailure(
+                    "TUSHARE_TOKEN=" + marker,
+                    code="AUTH_UNAVAILABLE",
+                    retryable=False,
+                    fallback_allowed=False,
+                ),
+            ),
+            SupportExplosion(),
+            LoadExplosion(),
+        )
+        for provider in providers:
+            with self.subTest(provider=provider.provider_id):
+                router = ProviderRouter(ProviderRegistry((provider,)))
+                with self.assertRaises(ProviderResolutionError) as caught:
+                    router.load(
+                        request_for(dataset),
+                        (provider.provider_id,),
+                    )
+                rendered = "".join(
+                    traceback.format_exception(caught.exception)
+                )
+                self.assertNotIn(marker, rendered)
+                self.assertIsNone(caught.exception.__context__)
+
+    def test_invalid_error_code_is_rejected_before_audit(self) -> None:
+        with self.assertRaises(ValueError):
+            ProviderFailure(
+                "public message",
+                code="invalid-code",
+                retryable=False,
+                fallback_allowed=False,
+            )
+
+    def test_provider_booleans_and_completeness_use_strict_types(self) -> None:
+        with self.assertRaises(ValueError):
+            replace(result_for("safe"), volume_completeness=True)
+        for field in ("retryable", "fallback_allowed"):
+            arguments = {
+                "retryable": False,
+                "fallback_allowed": False,
+            }
+            arguments[field] = "false"
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                ProviderFailure(
+                    "public message",
+                    code="SOURCE_UNAVAILABLE",
+                    **arguments,
+                )
+
+    def test_supports_must_return_an_actual_boolean(self) -> None:
+        class StringSupportProvider:
+            provider_id = "string_support"
+            assurance_mode = DataAssuranceMode.PROVIDER_VERIFIED
+
+            def supports(self, request: DataRequest) -> bool:
+                del request
+                return "false"
+
+            def load(self, request: DataRequest) -> ProviderLoadResult:
+                del request
+                raise AssertionError("unreachable")
+
+        provider = StringSupportProvider()
+        router = ProviderRouter(ProviderRegistry((provider,)))
+        with self.assertRaises(ProviderResolutionError) as caught:
+            router.load(request_for(), (provider.provider_id,))
+        self.assertEqual(caught.exception.code, "PROVIDER_PROTOCOL_ERROR")
+        self.assertIsNone(caught.exception.__context__)
+
+    def test_provider_diagnostics_use_an_explicit_public_allowlist(self) -> None:
+        marker = "fixture-private-diagnostic"
+        dataset = make_dataset(make_bars(220))
+        result = replace(
+            result_for("safe", dataset),
+            diagnostics={
+                "input_rows": 220,
+                "provider_debug_payload": marker,
+            },
+        )
+        provider = FakeProvider("safe", result=result)
+        routed = ProviderRouter(ProviderRegistry((provider,))).load(
+            request_for(dataset),
+            ("safe",),
+        )
+        self.assertEqual(routed.diagnostics["input_rows"], 220)
+        self.assertNotIn("provider_debug_payload", routed.diagnostics)
+        self.assertNotIn(marker, str(routed.diagnostics))
+
+    def test_allowlisted_diagnostic_values_are_type_checked(self) -> None:
+        marker = "fixture-private-diagnostic"
+        dataset = make_dataset(make_bars(220))
+        unsafe_result = replace(
+            result_for("unsafe", dataset),
+            diagnostics={"input_rows": marker},
+        )
+        unsafe = FakeProvider("unsafe", result=unsafe_result)
+        backup = FakeProvider("backup", result=result_for("backup", dataset))
+        routed = ProviderRouter(
+            ProviderRegistry((unsafe, backup))
+        ).load(request_for(dataset), ("unsafe", "backup"))
+        self.assertEqual(routed.provider_id, "backup")
+        self.assertEqual(
+            routed.attempts[0].error_code,
+            "PROVIDER_CONTRACT_VIOLATION",
+        )
+        self.assertNotIn(marker, str(routed.diagnostics))
+
+    def test_public_source_label_allows_brand_slash_but_rejects_secrets(self) -> None:
+        artifact = result_for("safe").artifacts[0]
+        accepted = replace(artifact, source_label="Wind/同花顺")
+        self.assertEqual(accepted.source_label, "Wind/同花顺")
+        with self.assertRaises(ValueError):
+            replace(
+                artifact,
+                source_label="TUSHARE_TOKEN=fixture-secret",
+            )
+
+    def test_public_metadata_fields_reject_secret_shaped_values(self) -> None:
+        result = result_for("safe")
+        artifact = result.artifacts[0]
+        mutations = (
+            lambda: replace(result, snapshot_id="fixture-secret"),
+            lambda: replace(artifact, snapshot_id="fixture-secret"),
+            lambda: replace(
+                artifact,
+                artifact_name="token=fixture-secret.csv",
+            ),
+            lambda: replace(
+                artifact,
+                timestamp_policy="fixture-secret",
+            ),
+            lambda: replace(
+                artifact,
+                revision_id="Authorization: Basic fixture-secret",
+            ),
+        )
+        for index, mutation in enumerate(mutations):
+            with self.subTest(index=index), self.assertRaises(ValueError):
+                mutation()
+
+    def test_dataset_source_is_revalidated_before_report_output(self) -> None:
+        base_dataset = make_dataset(make_bars(220))
+        unsafe_dataset = replace(
+            base_dataset,
+            source="Authorization: Basic fixture-secret",
+        )
+        unsafe_result = replace(
+            result_for("unsafe", base_dataset),
+            dataset=unsafe_dataset,
+        )
+        unsafe = FakeProvider("unsafe", result=unsafe_result)
+        backup = FakeProvider(
+            "backup",
+            result=result_for("backup", base_dataset),
+        )
+        routed = ProviderRouter(
+            ProviderRegistry((unsafe, backup))
+        ).load(request_for(base_dataset), ("unsafe", "backup"))
+        self.assertEqual(routed.provider_id, "backup")
+        self.assertNotIn("fixture-secret", str(routed.diagnostics))
+
+    def test_dataset_source_must_match_instrument_artifact(self) -> None:
+        base_dataset = make_dataset(make_bars(220))
+        mismatched_dataset = replace(base_dataset, source="other-safe-source")
+        mismatched_result = replace(
+            result_for("mismatch", base_dataset),
+            dataset=mismatched_dataset,
+        )
+        mismatch = FakeProvider("mismatch", result=mismatched_result)
+        backup = FakeProvider(
+            "backup",
+            result=result_for("backup", base_dataset),
+        )
+        routed = ProviderRouter(
+            ProviderRegistry((mismatch, backup))
+        ).load(request_for(base_dataset), ("mismatch", "backup"))
+        self.assertEqual(routed.provider_id, "backup")
+        self.assertEqual(
+            routed.attempts[0].error_code,
+            "PROVIDER_CONTRACT_VIOLATION",
+        )
 
     def test_unsafe_volume_semantics_are_never_selected(self) -> None:
         dataset = make_dataset(make_bars(220))

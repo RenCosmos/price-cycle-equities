@@ -186,7 +186,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     _validate_pairs(parser, arguments)
     try:
         json_path, markdown_path, warnings = run(arguments)
-    except (CsvDataError, ProviderResolutionError) as error:
+    except ProviderResolutionError as error:
+        print(f"Data error [{error.code}]: {error}", file=sys.stderr)
+        return EXIT_DATA
+    except CsvDataError as error:
         print(f"Data error: {error}", file=sys.stderr)
         return EXIT_DATA
     except (FileExistsError, OSError, ValueError) as error:

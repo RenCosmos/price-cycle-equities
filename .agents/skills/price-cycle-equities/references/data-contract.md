@@ -129,6 +129,11 @@ valid_to。关键规则无法解析时 fail_closed：拒绝生成可执行订单
     volume_scope, volume_basis, zero_volume_policy
     timestamp_policy, retrieved_at, revision_id
 
+`snapshot_id` 必须是内容或规范化请求快照的 64 位小写 SHA-256 摘要。上游版本号、
+ETag 或修订号应单独放入经过公开标签校验的 `revision_id`，不能把 URL、路径或凭证
+放进快照字段。`dataset.source` 必须是简短公开标签，并与 instrument 工件的
+`source_label` 一致。
+
 Provider 还必须在注册时声明 `assurance_mode`。只有
 `user_supplied_unverified` 类型可使用整组 `user_supplied_not_verified`
 质量值并保留 `volume_completeness=null`；`provider_verified` 类型不能借用这一

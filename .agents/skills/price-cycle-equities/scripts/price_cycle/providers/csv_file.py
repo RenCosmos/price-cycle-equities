@@ -13,6 +13,7 @@ from .base import (
     ProviderFailure,
     ProviderLoadResult,
     SourceArtifact,
+    _validate_public_label,
 )
 
 
@@ -84,6 +85,18 @@ class CsvFileProvider:
         return request.interval == "1d"
 
     def load(self, request: DataRequest) -> ProviderLoadResult:
+        configuration_error: ProviderFailure | None = None
+        try:
+            _validate_public_label(self.source_label, field="CSV source label")
+        except ValueError:
+            configuration_error = ProviderFailure(
+                "CSV source must be a short public label, not a URL, path, or credential",
+                code="INVALID_PROVIDER_CONFIGURATION",
+                retryable=False,
+                fallback_allowed=False,
+            )
+        if configuration_error is not None:
+            raise configuration_error
         input_path = Path(self.input_path)
         benchmark_path = (
             Path(self.benchmark_path)
@@ -107,6 +120,7 @@ class CsvFileProvider:
                 fallback_allowed=True,
             )
 
+        load_error: ProviderFailure | None = None
         try:
             dataset, diagnostics = load_dataset(
                 input_path=input_path,
@@ -135,19 +149,21 @@ class CsvFileProvider:
                 source_label=self.source_label,
             )
         except CsvDataError as error:
-            raise ProviderFailure(
+            load_error = ProviderFailure(
                 f"Manual CSV validation failed: {error}",
                 code="INVALID_SOURCE_DATA",
                 retryable=False,
                 fallback_allowed=True,
-            ) from error
-        except OSError as error:
-            raise ProviderFailure(
+            )
+        except OSError:
+            load_error = ProviderFailure(
                 "A configured CSV artifact could not be read",
                 code="SOURCE_UNAVAILABLE",
                 retryable=True,
                 fallback_allowed=True,
-            ) from error
+            )
+        if load_error is not None:
+            raise load_error
 
         artifacts = [
             SourceArtifact(

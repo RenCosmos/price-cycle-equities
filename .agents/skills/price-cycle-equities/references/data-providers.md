@@ -5,11 +5,13 @@
 
 ## 当前实现状态
 
-- v0.2.0-alpha.1 已实现 provider 契约、注册表、顺序回退、来源审计和
-  `manual_csv` 适配器。
+- v0.2.0-alpha.2-dev.1 已实现 provider 契约、注册表、顺序回退、来源审计、
+  `manual_csv` 适配器，以及显式、离线、失败关闭的 TOML 配置校验骨架。
 - 现有 CLI 参数保持不变，但内部已经通过 `DataRequest → ProviderRouter →
   DataSet` 加载。
 - 尚未启用任何远程 provider。CSV 仍是唯一默认来源；下表远程来源均为规划候选。
+- 配置不会自动发现，也不接受 token 值或任意环境变量名；凭证引用、市场能力和可信
+  类别由代码目录拥有。详见 [Provider 配置与凭证边界](provider-config.md)。
 - 首版 provider 必须原子满足主标的和可选基准请求，不做跨来源拼接。
 
 ## 不可破坏的边界

@@ -26,6 +26,8 @@ Always read [references/strategy-spec.md](references/strategy-spec.md) and
 - When consuming market, fundamental, or backtest data, read [references/data-contract.md](references/data-contract.md).
 - When selecting, adding, or falling back between data sources, read
   [references/data-providers.md](references/data-providers.md).
+- When validating provider routes or credential references, also read
+  [references/provider-config.md](references/provider-config.md).
 - For A-shares, read [references/markets/cn-equities.md](references/markets/cn-equities.md).
 - For U.S. equities, read [references/markets/us-equities.md](references/markets/us-equities.md).
 - When evaluating dated trading constraints, read
@@ -72,6 +74,11 @@ order. Review all UNKNOWN fields and warnings before explaining the result.
 Do not enable a remote provider without an explicit user choice and any required
 credentials or license. Reject partial-venue price or volume data, future-known rows,
 and silent price-basis changes before running Cycle evidence scoring.
+
+Provider configuration is explicit and fail-closed. Never auto-discover a config or
+`.env` file, accept a credential value in TOML or a CLI flag, or treat user configuration
+as proof of data coverage. The current config validator is offline; it does not make a
+remote provider available.
 
 The report keeps Oliver Kell's six public phase families distinct from the eight
 directional candidates used by this project's deterministic output. Do not describe
