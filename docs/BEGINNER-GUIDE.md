@@ -77,8 +77,8 @@ python -m unittest discover -s tests -p "test_*.py" -v
 python .agents/skills/price-cycle-equities/scripts/validate_provider_config.py --config examples/provider-config.toml.example
 ```
 
-它只做离线检查，不会联网。当前远程来源尚未实现；不要在 TOML、命令行或聊天里
-填写 token。详细说明见
+它只做离线检查，不会联网。当前没有可启用的远程来源；Tushare 只有默认断网的
+解析测试骨架。不要在 TOML、命令行或聊天里填写 token。详细说明见
 [Provider 配置与凭证边界](../.agents/skills/price-cycle-equities/references/provider-config.md)。
 
 ## 安全边界

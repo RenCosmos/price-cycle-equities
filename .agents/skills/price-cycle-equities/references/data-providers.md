@@ -5,8 +5,10 @@
 
 ## 当前实现状态
 
-- v0.2.0-alpha.2-dev.1 已实现 provider 契约、注册表、顺序回退、来源审计、
+- v0.2.0-alpha.2-dev.2 已实现 provider 契约、注册表、顺序回退、来源审计、
   `manual_csv` 适配器，以及显式、离线、失败关闭的 TOML 配置校验骨架。
+- Tushare 已有单标的 A 股 `daily` 请求与严格响应标准化 scaffold，可用固定响应测试；
+  默认 transport 不发起请求，catalog 仍为 planned-only。
 - 现有 CLI 参数保持不变，但内部已经通过 `DataRequest → ProviderRouter →
   DataSet` 加载。
 - 尚未启用任何远程 provider。CSV 仍是唯一默认来源；下表远程来源均为规划候选。
@@ -78,7 +80,7 @@
 
 | 来源 | 覆盖与用途 | 约束 | 规划定位 |
 |---|---|---|---|
-| [Tushare Pro](https://tushare.pro/document/2) | A/美行情、财务、公司行动、日历和主数据 | 用户 token；权限和频次随积分或单独授权变化，见[权限说明](https://tushare.pro/document/1?doc_id=108)。美股财务不宜作为点时主源 | 大陆优先的首批 opt-in 候选；美股行情必须先通过全市场成交量验收 |
+| [Tushare Pro](https://tushare.pro/document/2) | A/美行情、财务、公司行动、日历和主数据 | 用户 token；官方 [HTTP 调用文档](https://tushare.pro/document/2?doc_id=130)与当前 SDK 仍使用明文 HTTP；A 股 `daily` 自 2026-07-06 增加 `ah_vol` 后未说明 `vol` 是否已含盘后量 | 大陆优先候选；已有离线 A 股解析 scaffold，但安全传输和成交量完整度明确前不得启用 |
 | [Wind Client API](https://www.wind.com.cn/portal/zh/ClientApi/index.html) | 中美及全球多类数据 | 商业终端、本机客户端和许可；不得随 Skill 分发数据 | 仅规划用户自带许可的商业适配器 |
 | [JQData](https://www.joinquant.com/help/api/doc?id=9845&name=JQDatadoc) | 主要为 A 股行情、财务和主数据 | 账号及购买权限；默认复权和停牌填充行为必须显式关闭或规范化 | 仅规划可选适配器 |
 | [AKShare](https://akshare.akfamily.xyz/data/stock/stock.html) | A/美网页接口聚合 | 上游网页易变，存在登录、封禁和复权失效风险 | 实验性手动适配器；不得进入自动回退链 |
@@ -96,6 +98,22 @@
 - A 股财务与公司行动：Tushare → EODHD，再以交易所或巨潮公告核验。
 - 美股财务：SEC EDGAR → EODHD；Tushare 美股财务仅作交叉核对。
 - AKShare、Massive 和需商业许可的官方历史文件均不默认启用。
+
+## Tushare 当前失败关闭原因
+
+官方 [A 股日线说明](https://tushare.pro/document/2?doc_id=27)确认 `daily` 是未复权行情、
+停牌日不返回行、`vol` 单位为手，且数据在收盘后入库。当前 scaffold 因此只接受 raw
+OHLCV、单一完整 TS code，并把 `known_at` 保守设为交易日 17:00（Asia/Shanghai）。
+它固定向 `as_of` 前取 550 个日历日作为指标预热范围；这是数据提取边界，不是 Cycle
+交易规则，起止日会进入无密钥快照。
+
+但官方 HTTP 文档和官方 Python SDK 公开源码仍把 token 放入发往
+`http://api.tushare.pro` 的 POST JSON。HTTPS 主机可达不等于官方承诺其鉴权 POST
+契约稳定，因此不能猜测上线，更不能在失败后降级 HTTP。与此同时，日线接口新增
+`ah_vol/ah_amount` 后，官方未说明原 `vol` 是否已包含盘后成交，不能据此声明
+`volume_completeness=1.0`。本项目把这两点视为硬门：安全端点和成交量语义任一未知，
+就不生成可进入策略引擎的 DataSet。该接口也没有历史版本号，因此未来即使启用，
+抓取的旧 K 线只能标为“当前所见历史”，不能自动宣称是严格的 point-in-time 回测数据。
 
 ## 新增 provider 的验收清单
 

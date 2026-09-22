@@ -28,7 +28,15 @@ from .config import (
     ProviderRoute,
     ProviderSettings,
     SecretValue,
+    TUSHARE_TOKEN_SPEC,
     load_provider_config,
+)
+from .tushare import (
+    BlockedTushareTransport,
+    HISTORY_CALENDAR_DAYS,
+    TushareDailyProvider,
+    TushareTransport,
+    TushareTransportError,
 )
 
 __all__ = [
@@ -57,5 +65,11 @@ __all__ = [
     "ProviderSettings",
     "SecretValue",
     "SourceArtifact",
+    "TUSHARE_TOKEN_SPEC",
+    "BlockedTushareTransport",
+    "TushareDailyProvider",
+    "TushareTransport",
+    "TushareTransportError",
+    "HISTORY_CALENDAR_DAYS",
     "load_provider_config",
 ]

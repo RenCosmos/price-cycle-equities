@@ -39,6 +39,11 @@ from .providers import (
     ProviderSettings,
     SecretValue,
     SourceArtifact,
+    TUSHARE_TOKEN_SPEC,
+    BlockedTushareTransport,
+    TushareDailyProvider,
+    TushareTransport,
+    TushareTransportError,
     load_provider_config,
 )
 
@@ -79,9 +84,14 @@ __all__ = [
     "RuleResolutionStatus",
     "SourceArtifact",
     "SecretValue",
+    "TUSHARE_TOKEN_SPEC",
+    "BlockedTushareTransport",
+    "TushareDailyProvider",
+    "TushareTransport",
+    "TushareTransportError",
     "TriState",
     "rules_at",
     "load_provider_config",
 ]
 
-__version__ = "0.2.0-alpha.2-dev.1"
+__version__ = "0.2.0-alpha.2-dev.2"

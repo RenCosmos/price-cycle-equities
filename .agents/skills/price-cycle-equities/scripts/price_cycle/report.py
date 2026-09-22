@@ -26,7 +26,7 @@ from .parameters import ResearchParameters
 
 
 SCHEMA_VERSION = "1.1.0"
-ENGINE_VERSION = "0.2.0-alpha.2-dev.1"
+ENGINE_VERSION = "0.2.0-alpha.2-dev.2"
 STRATEGY_SPEC_VERSION = "1.0.1-draft"
 
 

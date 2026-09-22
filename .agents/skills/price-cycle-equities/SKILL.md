@@ -77,8 +77,11 @@ and silent price-basis changes before running Cycle evidence scoring.
 
 Provider configuration is explicit and fail-closed. Never auto-discover a config or
 `.env` file, accept a credential value in TOML or a CLI flag, or treat user configuration
-as proof of data coverage. The current config validator is offline; it does not make a
-remote provider available.
+as proof of data coverage. The config validator is offline; it does not make a remote
+provider available. The Tushare daily-bar adapter scaffold is also offline by default.
+Its request, normalization, and secret-free snapshot boundaries are testable, but the
+catalog and default transport remain blocked until secure POST and complete-volume
+semantics are verified from primary sources.
 
 The report keeps Oliver Kell's six public phase families distinct from the eight
 directional candidates used by this project's deterministic output. Do not describe

@@ -1,8 +1,9 @@
 # Provider 配置与凭证边界
 
-本文件说明 v0.2.0-alpha.2-dev.1 的离线配置骨架。当前分析器仍只使用
-`manual_csv`；Tushare 和 EODHD 只是登记在代码目录中的后续候选，尚不能启用，
-也不会发起网络请求。
+本文件说明 v0.2.0-alpha.2-dev.2 的离线配置骨架。当前分析器仍只使用
+`manual_csv`；Tushare 已有可用固定响应测试的严格解析骨架，但真实 transport 和
+catalog 路由仍然阻断。EODHD 仍是登记中的后续候选。两者都不能启用，也不会由当前
+配置发起网络请求。
 
 ## 配置解决什么问题
 
@@ -65,12 +66,13 @@ python .agents/skills/price-cycle-equities/scripts/validate_provider_config.py -
 
 | Provider | 计划使用的环境变量 | 当前状态 |
 |---|---|---|
-| Tushare | `PRICE_CYCLE_TUSHARE_TOKEN` | 仅登记，适配器未实现 |
+| Tushare | `PRICE_CYCLE_TUSHARE_TOKEN` | 离线 adapter scaffold；真实联网未启用 |
 | EODHD | `PRICE_CYCLE_EODHD_TOKEN` | 仅登记，适配器未实现 |
 
 校验器最多显示环境变量的名称和 `available/missing/disabled` 状态，不读取或输出值。
-未来 adapter 只应在真正尝试对应 provider 的请求边界解析凭证，并把它包在默认脱敏、
-不可直接序列化的 `SecretValue` 中。不要把真实 token 发到聊天中。
+Adapter 只应在市场、口径、标的身份和基准请求全部通过后解析凭证，并把它包在默认
+脱敏、不可直接序列化的 `SecretValue` 中。当前 Tushare 默认 transport 即使本机已有
+该环境变量也不会联网。不要把真实 token 发到聊天中。
 
 ## 扩展约束
 

@@ -27,3 +27,14 @@ Oliver Kell 当前个人网站将框架概括为六个 phase families；TraderLi
 资料另行描述上下行 EMA Crossback 与 Base n' Break。公开 Kell/TraderLion 资料支持
 成长股、盈利销售增长和相对强度思想，但本项目不据此宣称完整 CAN SLIM 七因子是
 Cycle 的原生组成部分。
+
+## 数据提供器资料
+
+- [Tushare HTTP API](https://tushare.pro/document/2?doc_id=130)
+- [Tushare A 股日线 daily](https://tushare.pro/document/2?doc_id=27)
+- [Tushare 股票代码格式](https://tushare.pro/document/2?doc_id=14)
+- [Tushare 权限与更新时间](https://tushare.pro/document/1?doc_id=108)
+- [Tushare 官方 Python client](https://github.com/waditu/tushare/blob/master/tushare/pro/client.py)
+
+这些链接用于核验接口契约，不构成启用授权。只观察到 HTTPS 主机可达，不能替代官方
+对鉴权 POST、重定向和长期兼容性的书面契约；成交量字段的完整覆盖也必须单独确认。

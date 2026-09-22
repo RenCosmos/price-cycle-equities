@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.0-alpha.2-dev.2 - 2026-09-22
+
+- 新增 Tushare A 股未复权日线 adapter scaffold 与可注入 transport；只标准化事实，
+  不计算或改变 EMA、ATR、Cycle 和 CAN SLIM 规则。
+- 严格限定 `CN + raw + 1d + COMMON_STOCK + 无 benchmark`，要求完整的
+  `.SH/.SZ/.BJ` TS code，并校验交易所、日期、OHLCV、重复行和上游错误码。
+- 规范化快照不含 token、URL、上游消息或抓取时间；凭证只使用固定环境变量，
+  不支持的请求和身份冲突在读取凭证前停止。
+- 默认 Tushare transport 明确失败关闭，catalog 继续保持 planned-only。官方文档和
+  SDK 仍使用明文 HTTP，且 2026 年新增 `ah_vol` 后未说明 `vol` 是否包含盘后量；
+  两项未决前不会发送真实 token，也不会把未知成交量送入策略评分。
+- 忽略项目内 `.tmp/` 临时验证目录，降低报告或临时依赖被误提交的风险。
+- 原 CSV CLI、离线 provider 配置格式和策略计算保持不变。
+
 ## 0.2.0-alpha.2-dev.1 - 2026-09-22
 
 - 新增显式 TOML provider 配置与独立离线校验器；现有 CSV CLI 保持不变且不会联网。
