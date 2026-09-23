@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.2.0-alpha.2-dev.3 - 2026-09-23
+
+- 新增单股自然语言自动取数流程：Skill 将市场、代码、截止日期和基准转换为结构化
+  `DataRequest`；命令行继续保持确定性，不自行解析自然语言。
+- EODHD 成为首个可运行远程 provider，可获取 A 股和美股的已完成日线与拆股事件，
+  并在本地生成 `split_adjusted` OHLC；“最近收盘”只表示截止日期前最后一根已完成
+  日线，不是盘中或实时行情。
+- EODHD 远程请求仅支持 `COMMON_STOCK`。代码和后缀路由不等于证券主数据核验，
+  报告新增 `INSTRUMENT_IDENTITY_NOT_PROVIDER_VERIFIED`；该限制不影响身份元数据明确的
+  CSV ADR 研究。
+- 新增可复用单股 pipeline 和显式远程配置示例；默认相对强度代理为 CN `510300`
+  与 US `VTI`，远程自定义基准仅接受代码内批准的 ETF 代理白名单。主标的和基准必须
+  由同一 provider 原子成功，失败时不生成半成品报告。
+- 远程 `volume_basis` 与 `zero_volume_policy` 均为 UNKNOWN，完整市场/时段语义
+  尚未独立验证，因此所有量能指标与确认完全禁用并保持 UNKNOWN；价格结构候选可继续
+  识别，但明确标为“量能未确认”，整体置信度最高为 MEDIUM。
+- 修正缺失量能被误当成 FALSE 的 Cycle 语义：UNKNOWN 不再错误压制仅由价格结构支持的
+  Wedge Pop/Base n’ Break 候选，明确为 FALSE 的量能反证仍会阻止确认。
+- 增强远程安全边界：固定 HTTPS 主机、拒绝重定向、响应大小与超时限制、请求前身份
+  校验、重复拆股日期拒绝，以及异常链、URL、token 与本机路径脱敏。
+- 继续保持周线结构 UNKNOWN，CAN SLIM 的 C/A/N/S/L/I/M 点时证据 UNKNOWN；
+  CSV 作为离线回退不变。当前只有 EODHD 一个可运行远程源，尚无自动冗余，多股自然
+  语言筛选也尚未完成。
+
 ## 0.2.0-alpha.2-dev.2 - 2026-09-22
 
 - 新增 Tushare A 股未复权日线 adapter scaffold 与可注入 transport；只标准化事实，

@@ -639,6 +639,64 @@ class ProviderRoutingTests(unittest.TestCase):
                     expected_code,
                 )
 
+    def test_vendor_unverified_volume_requires_evidence_to_be_disabled(self) -> None:
+        dataset = make_dataset(make_bars(220))
+        unsafe = FakeProvider(
+            "unsafe",
+            result=result_for(
+                "unsafe",
+                dataset,
+                volume_scope="vendor_reported_unverified",
+            ),
+        )
+        backup = FakeProvider(
+            "backup",
+            result=result_for("backup", dataset),
+        )
+        routed = ProviderRouter(
+            ProviderRegistry((unsafe, backup))
+        ).load(request_for(dataset), ("unsafe", "backup"))
+        self.assertEqual(routed.provider_id, "backup")
+        self.assertEqual(
+            routed.attempts[0].error_code,
+            "UNVERIFIED_VOLUME_EVIDENCE_ENABLED",
+        )
+
+        price_only_dataset = replace(
+            dataset,
+            volume_evidence_eligible=False,
+        )
+        price_only = FakeProvider(
+            "price_only",
+            result=result_for(
+                "price_only",
+                price_only_dataset,
+                volume_scope="vendor_reported_unverified",
+            ),
+        )
+        selected = ProviderRouter(
+            ProviderRegistry((price_only,))
+        ).load(request_for(price_only_dataset), ("price_only",))
+        self.assertEqual(selected.provider_id, "price_only")
+
+        unknown_volume_semantics = FakeProvider(
+            "unknown_volume_semantics",
+            result=result_for(
+                "unknown_volume_semantics",
+                price_only_dataset,
+                volume_scope="vendor_reported_unverified",
+                volume_basis="unknown",
+                zero_volume_policy="unknown",
+            ),
+        )
+        selected_unknown = ProviderRouter(
+            ProviderRegistry((unknown_volume_semantics,))
+        ).load(
+            request_for(price_only_dataset),
+            ("unknown_volume_semantics",),
+        )
+        self.assertEqual(selected_unknown.provider_id, "unknown_volume_semantics")
+
     def test_future_known_at_is_rejected_before_fallback(self) -> None:
         dataset = make_dataset(make_bars(220))
         future_bars = list(dataset.bars)

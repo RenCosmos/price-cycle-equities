@@ -22,7 +22,13 @@ from .providers import (
     DEFAULT_PROVIDER_CATALOG,
     DataAssuranceMode,
     DataRequest,
+    EODHD_HISTORY_CALENDAR_DAYS,
+    EODHD_TOKEN_SPEC,
+    EodhdDailyProvider,
+    EodhdTransport,
+    EodhdTransportError,
     EnvironmentCredentialResolver,
+    HttpsEodhdTransport,
     ProviderAccessMode,
     ProviderAttempt,
     ProviderAttemptStatus,
@@ -36,6 +42,7 @@ from .providers import (
     ProviderResolutionError,
     ProviderRoute,
     ProviderRouter,
+    ProviderRuntimeError,
     ProviderSettings,
     SecretValue,
     SourceArtifact,
@@ -44,7 +51,9 @@ from .providers import (
     TushareDailyProvider,
     TushareTransport,
     TushareTransportError,
+    build_remote_registry,
     load_provider_config,
+    resolve_remote_route,
 )
 
 __all__ = [
@@ -57,8 +66,14 @@ __all__ = [
     "DataAssuranceMode",
     "DataSet",
     "DataRequest",
+    "EODHD_HISTORY_CALENDAR_DAYS",
+    "EODHD_TOKEN_SPEC",
+    "EodhdDailyProvider",
+    "EodhdTransport",
+    "EodhdTransportError",
     "EnvironmentCredentialResolver",
     "EvidenceItem",
+    "HttpsEodhdTransport",
     "FeatureRow",
     "Market",
     "ObservedEvent",
@@ -78,6 +93,7 @@ __all__ = [
     "ProviderRoute",
     "ProviderRouter",
     "ProviderSettings",
+    "ProviderRuntimeError",
     "Provenance",
     "ResearchParameters",
     "RuleResolution",
@@ -91,7 +107,9 @@ __all__ = [
     "TushareTransportError",
     "TriState",
     "rules_at",
+    "build_remote_registry",
     "load_provider_config",
+    "resolve_remote_route",
 ]
 
-__version__ = "0.2.0-alpha.2-dev.2"
+__version__ = "0.2.0-alpha.2-dev.3"

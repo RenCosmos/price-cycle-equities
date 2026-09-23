@@ -69,6 +69,11 @@ TUSHARE_TOKEN_SPEC = CredentialSpec(
     "PRICE_CYCLE_TUSHARE_TOKEN",
 )
 
+EODHD_TOKEN_SPEC = CredentialSpec(
+    "token",
+    "PRICE_CYCLE_EODHD_TOKEN",
+)
+
 
 class SecretValue:
     """A deliberately non-serializable wrapper for a resolved credential."""
@@ -233,10 +238,8 @@ DEFAULT_PROVIDER_CATALOG = ProviderCatalog(
             provider_id="eodhd",
             assurance_mode=DataAssuranceMode.PROVIDER_VERIFIED,
             access_mode=ProviderAccessMode.REMOTE,
-            implemented=False,
-            credentials=(
-                CredentialSpec("token", "PRICE_CYCLE_EODHD_TOKEN"),
-            ),
+            implemented=True,
+            credentials=(EODHD_TOKEN_SPEC,),
             supported_markets=(Market.CN, Market.US),
             data_kinds=("daily_bars",),
         ),

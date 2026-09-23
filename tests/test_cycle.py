@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, timedelta
 import unittest
 
@@ -32,7 +33,7 @@ def feature_row(
     prior_high: float = 110.0,
     prior_low: float = 90.0,
     range_ratio: float = 1.0,
-    volume_ratio: float = 1.0,
+    volume_ratio: float | None = 1.0,
     distance: float = 0.0,
 ) -> FeatureRow:
     close_location = None if high == low else (close - low) / (high - low)
@@ -146,6 +147,68 @@ class CycleEvidenceTests(unittest.TestCase):
                 if family == "Base n' Break"
             },
             {"upside", "downside"},
+        )
+
+    def test_unknown_volume_preserves_price_structure_candidates(self) -> None:
+        rows = neutral_prefix()
+        rows.append(replace(wedge_pop(60), volume_ratio=None))
+        rows.extend(up_continuation(index) for index in range(61, 66))
+        rows.append(
+            feature_row(
+                66,
+                close=114.5,
+                high=115.0,
+                low=112.0,
+                ema10=109.0,
+                ema20=108.5,
+                ema10_slope=0.005,
+                ema20_slope=0.004,
+                prior_high=113.0,
+                range_ratio=0.80,
+                volume_ratio=None,
+                distance=3.5,
+            )
+        )
+        events = detect_events(tuple(rows), instrument_id="US:TEST")
+        wedge = next(event for event in events if event.event_type == "WEDGE_POP")
+        base = next(
+            event
+            for event in events
+            if event.event_type == "UPSIDE_BASE_N_BREAK"
+        )
+        for event, volume_rule in (
+            (wedge, "WP-VOLUME"),
+            (base, "BNB-U-VOLUME"),
+        ):
+            with self.subTest(event=event.event_type):
+                self.assertEqual(
+                    dict(event.payload)["confirmation"],
+                    "price_structure_only_volume_unknown",
+                )
+                volume_evidence = next(
+                    item
+                    for item in event.evidence
+                    if item.rule_id == volume_rule
+                )
+                self.assertEqual(volume_evidence.status.value, "UNKNOWN")
+
+        assessments = {
+            item.phase: item for item in assess_current(tuple(rows), events)
+        }
+        self.assertIn(
+            "BNB-U-VOLUME",
+            {
+                item.rule_id
+                for item in assessments["Upside Base n' Break"].unknowns
+            },
+        )
+
+    def test_failed_volume_confirmation_does_not_create_wedge_pop(self) -> None:
+        rows = neutral_prefix()
+        rows.append(replace(wedge_pop(60), volume_ratio=1.0))
+        events = detect_events(tuple(rows), instrument_id="US:TEST")
+        self.assertFalse(
+            any(event.event_type == "WEDGE_POP" for event in events)
         )
 
     def test_first_upside_crossback_is_consumed_once(self) -> None:

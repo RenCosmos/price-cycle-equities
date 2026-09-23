@@ -73,6 +73,8 @@ class DataSet:
     benchmark_symbol: str | None = None
     benchmark_bars: tuple[Bar, ...] = ()
     timestamp_policy: str = "session_date_known_after_close"
+    volume_evidence_eligible: bool = True
+    instrument_identity_assurance: str = "user_declared_not_verified"
 
     def __post_init__(self) -> None:
         if not self.instrument_id.strip():
@@ -94,6 +96,15 @@ class DataSet:
             raise ValueError("Dataset contains a benchmark bar after as_of")
         if not self.timestamp_policy.strip():
             raise ValueError("timestamp_policy is required")
+        if type(self.volume_evidence_eligible) is not bool:
+            raise ValueError("volume_evidence_eligible must be boolean")
+        if self.instrument_identity_assurance not in {
+            "provider_master_verified",
+            "symbol_route_inferred_not_master_verified",
+            "user_declared_not_verified",
+        }:
+            raise ValueError("instrument_identity_assurance is unsupported")
+
 
     @staticmethod
     def _validate_bar_sequence(bars: tuple[Bar, ...], label: str) -> None:

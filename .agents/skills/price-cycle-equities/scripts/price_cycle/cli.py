@@ -6,25 +6,32 @@ from pathlib import Path
 import sys
 from typing import Sequence
 
-from .cycle import assess_current, detect_events
-from .indicators import build_features
 from .io import CsvDataError
 from .models import Market, PriceBasis
-from .parameters import ResearchParameters
+from .pipeline import analyze_loaded_result
 from .providers import (
     CsvFileProvider,
     DataRequest,
+    ProviderConfigError,
     ProviderRegistry,
     ProviderResolutionError,
     ProviderRouter,
+    ProviderRuntimeError,
+    build_remote_registry,
+    load_provider_config,
+    resolve_remote_route,
 )
-from .report import build_report, write_report_files
 
 
 EXIT_OK = 0
 EXIT_USAGE = 2
 EXIT_DATA = 3
 EXIT_ANALYSIS = 4
+
+DEFAULT_REMOTE_BENCHMARKS = {
+    Market.CN: "510300",
+    Market.US: "VTI",
+}
 
 
 def _date_value(value: str) -> date:
@@ -57,10 +64,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="price-cycle-analyze",
         description=(
-            "Create a research-only Cycle of Price Action report from daily OHLCV CSV data."
+            "Create a research-only Cycle of Price Action report from daily "
+            "OHLCV CSV data or an explicitly configured remote provider."
         ),
     )
-    parser.add_argument("--input", required=True, help="Stock OHLCV CSV file")
+    source_group = parser.add_mutually_exclusive_group(required=True)
+    source_group.add_argument("--input", help="Stock OHLCV CSV file")
+    source_group.add_argument(
+        "--provider-config",
+        help="Explicit TOML configuration for remote data providers",
+    )
     parser.add_argument("--market", required=True, type=_market_value, help="CN or US")
     parser.add_argument("--symbol", required=True, help="Ticker shown in the report")
     parser.add_argument(
@@ -71,8 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--source",
-        required=True,
-        help="Human-readable data source, for example broker-export",
+        help="Human-readable CSV data source, for example broker-export",
     )
     parser.add_argument(
         "--price-basis",
@@ -95,12 +107,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--security-type",
         default="COMMON_STOCK",
-        help="Security type (default: COMMON_STOCK; ADR is supported for US research)",
+        help="Security type (default: COMMON_STOCK; remote mode currently requires it)",
     )
     parser.add_argument("--benchmark", help="Optional benchmark OHLCV CSV file")
     parser.add_argument(
         "--benchmark-symbol",
-        help="Required together with --benchmark",
+        help=(
+            "CSV benchmark symbol, or a remote benchmark override "
+            "(defaults: CN 510300, US VTI)"
+        ),
     )
     parser.add_argument(
         "--output-dir",
@@ -120,16 +135,28 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _validate_pairs(
+def _validate_source_mode(
     parser: argparse.ArgumentParser,
     arguments: argparse.Namespace,
 ) -> None:
-    if bool(arguments.benchmark) != bool(arguments.benchmark_symbol):
-        parser.error("--benchmark and --benchmark-symbol must be supplied together")
+    if arguments.input:
+        if not arguments.source:
+            parser.error("--source is required with --input")
+        if bool(arguments.benchmark) != bool(arguments.benchmark_symbol):
+            parser.error(
+                "--benchmark and --benchmark-symbol must be supplied together"
+            )
+        return
+    if arguments.source:
+        parser.error("--source is only valid with --input")
+    if arguments.benchmark:
+        parser.error("--benchmark is only valid with --input")
 
 
 def run(arguments: argparse.Namespace) -> tuple[Path, Path, list[str]]:
-    parameters = ResearchParameters()
+    benchmark_symbol = arguments.benchmark_symbol
+    if arguments.provider_config and benchmark_symbol is None:
+        benchmark_symbol = DEFAULT_REMOTE_BENCHMARKS[arguments.market]
     request = DataRequest(
         symbol=arguments.symbol,
         market=arguments.market,
@@ -139,53 +166,41 @@ def run(arguments: argparse.Namespace) -> tuple[Path, Path, list[str]]:
         venue=arguments.venue,
         segment=arguments.segment,
         security_type=arguments.security_type,
-        benchmark_symbol=arguments.benchmark_symbol,
+        benchmark_symbol=benchmark_symbol,
     )
-    provider = CsvFileProvider(
-        input_path=arguments.input,
-        source_label=arguments.source,
-        benchmark_path=arguments.benchmark,
-    )
-    registry = ProviderRegistry((provider,))
-    loaded = ProviderRouter(registry).load(request, (provider.provider_id,))
-    dataset = loaded.dataset
-    diagnostics = loaded.diagnostics
-    features = build_features(dataset, parameters)
-    events = detect_events(
-        features,
-        instrument_id=dataset.instrument_id,
-        parameters=parameters,
-    )
-    assessments = assess_current(features, events, parameters=parameters)
-    report = build_report(
-        dataset=dataset,
-        diagnostics=diagnostics,
-        features=features,
-        assessments=assessments,
-        events=events,
-        parameters=parameters,
-        input_filename=loaded.artifact_name,
-        input_sha256=next(
-            artifact.snapshot_id
-            for artifact in loaded.artifacts
-            if artifact.role == "instrument"
-        ),
-    )
-    json_path, markdown_path = write_report_files(
-        report,
+    if arguments.input:
+        provider = CsvFileProvider(
+            input_path=arguments.input,
+            source_label=arguments.source,
+            benchmark_path=arguments.benchmark,
+        )
+        registry = ProviderRegistry((provider,))
+        provider_order = (provider.provider_id,)
+    else:
+        configuration = load_provider_config(arguments.provider_config)
+        registry = build_remote_registry(configuration)
+        provider_order = resolve_remote_route(
+            configuration,
+            registry,
+            market=arguments.market,
+        )
+    loaded = ProviderRouter(registry).load(request, provider_order)
+    return analyze_loaded_result(
+        loaded,
         output_dir=arguments.output_dir,
         overwrite=arguments.overwrite,
     )
-    warnings = list(report["data_quality"]["warnings"])
-    return json_path, markdown_path, warnings
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     arguments = parser.parse_args(argv)
-    _validate_pairs(parser, arguments)
+    _validate_source_mode(parser, arguments)
     try:
         json_path, markdown_path, warnings = run(arguments)
+    except (ProviderConfigError, ProviderRuntimeError) as error:
+        print(f"Configuration error [{error.code}]: {error}", file=sys.stderr)
+        return EXIT_DATA
     except ProviderResolutionError as error:
         print(f"Data error [{error.code}]: {error}", file=sys.stderr)
         return EXIT_DATA

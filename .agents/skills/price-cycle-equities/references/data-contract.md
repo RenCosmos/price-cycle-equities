@@ -16,6 +16,15 @@ Ticker、简称和外部标识通过 SymbolAlias 映射，并带 valid_from 与 
 同时保存 venue、segment、currency、timezone、security_type 和 listing_status。
 改名或换代码不应自动切断历史；新股份类别、ADR 与普通股分别建模。
 
+DataSet 通过 `instrument_identity_assurance` 保存身份保证；报告对应字段为
+`instrument.identity_assurance`。当前 EODHD adapter 只验证有限的 provider-neutral
+代码与后缀映射，不拥有完整历史证券主数据，因此固定为
+`symbol_route_inferred_not_master_verified`。报告必须加入
+`INSTRUMENT_IDENTITY_NOT_PROVIDER_VERIFIED`，并在 `missing_capabilities` 保留
+`provider_verified_instrument_master_identity`。不能把代码映射成功写成发行人、
+股份类别或历史挂牌身份已经由 provider 主数据验证。当前 EODHD 远程主标的仅支持
+`COMMON_STOCK`；ADR 若由用户 CSV 提供，可继续作为未验证研究范围。
+
 ## 时间语义
 
 所有时间存 UTC，并保留交易所时区：
@@ -27,7 +36,9 @@ Ticker、简称和外部标识通过 SymbolAlias 映射，并带 valid_from 与 
 
 必须满足 known_at 不早于 available_at 和 ingested_at。回测只允许使用
 known_at <= decision_time 的观察值。只有日期、没有时刻时，采用保守的收盘后可知策略，
-并记录 timestamp_policy。
+并记录 timestamp_policy。当前 EODHD“最近收盘”以市场当地时间 23:00 为保守 finalized
+cutoff：23:00 前排除当日日线，避免把尚未稳定的 bar 当作已完成数据；这不是供应商发布
+时刻的保证。
 
 ## Bar
 
@@ -77,6 +88,12 @@ ex_time、effective_at、ratio、cash_amount、currency、source_id 和 revision
 禁止用复权价模拟真实订单；禁止用未来才知道的公司行动修正过去实时信号；
 禁止把触及涨跌停或价格带等同于一定可以成交。
 
+供应商按当前请求返回的历史拆股和调整结果，不自动等于每个历史决策时点当时可见的
+版本。若缺少逐时点的公司行动版本与 `known_at`，必须报告
+`ADJUSTED_PRICE_POINT_IN_TIME_RISK`，并在 `missing_capabilities` 中保留
+`point_in_time_adjusted_price_vintage`。这类数据可以用于当前结构研究，不能直接
+宣称是无前视偏差的 point-in-time 回测数据。
+
 ## UNKNOWN 与三值逻辑
 
 缺失值表示为：
@@ -87,6 +104,8 @@ ex_time、effective_at、ratio、cash_amount、currency、source_id 和 revision
             stale | conflicted | unsupported
 
 布尔条件为 TRUE、FALSE 或 UNKNOWN。任何插值或替代指标必须记录 imputed、方法与来源。
+UNKNOWN 不等于 FALSE：例如价格结构已满足而供应商成交量语义未验证时，可以保留
+“价格结构候选”，但量能确认与量能反证都必须为 UNKNOWN，不能据此声称已经完成量价验证。
 
 ## 有效日期化市场规则
 
@@ -137,12 +156,36 @@ ETag 或修订号应单独放入经过公开标签校验的 `revision_id`，不�
 Provider 还必须在注册时声明 `assurance_mode`。只有
 `user_supplied_unverified` 类型可使用整组 `user_supplied_not_verified`
 质量值并保留 `volume_completeness=null`；`provider_verified` 类型不能借用这一
-豁免，且结果的价格口径必须由 provider 验证。
+豁免，且结果的价格口径必须由 provider 验证。`provider_verified` 只表示 adapter
+通过了它声明的硬契约，不表示身份、价格、成交量、市场规则和历史版本等每个维度都已
+完全验证；各维度仍由 lineage 字段、warnings 和 missing_capabilities 分别说明。
+
+DataSet 必须显式携带 `volume_evidence_eligible`。当它为 true 时，
+`vendor_reported_unverified`、`partial_venue`、`volume_basis=unknown`、
+`zero_volume_policy=unknown` 或其他无法验证的成交量语义必须硬失败；当且仅当它为
+false 时，才可保留这些 bar 用于价格结构研究，同时关闭所有 volume-derived 指标与
+证据。当前 EODHD 正是这一例外：`volume_scope=vendor_reported_unverified`、
+`volume_basis=unknown`、`zero_volume_policy=unknown` 且
+`volume_evidence_eligible=false`。此时：
+
+- `volume_sma20`、`volume_ratio` 和量能条件为 UNKNOWN；
+- 报告 `data_quality.evidence_mode` 为
+  `price_structure_only_volume_unconfirmed`；
+- warnings 至少包含 `VOLUME_CONFIRMATION_DISABLED`，并可补充供应商量能质量警告；
+- missing_capabilities 包含 `verified_complete_volume_semantics`；
+- 价格结构候选可以存在，但不能描述为已经获得成交量确认。
+
+`volume_completeness` 只计算返回 bar 中 volume 字段是否存在，是字段覆盖率，不是
+“完整市场成交量”的证明。它不能覆盖 `volume_scope`、`volume_basis` 或
+`volume_evidence_eligible` 的结论；`volume_completeness=1.0` 仍可能伴随全部
+量能证据 UNKNOWN。
 
 Provider 不得计算或覆写策略指标。局部场所行情、成交量覆盖不足、缺失量填零、
 身份或价格口径不一致，以及标准化结果仍含未来数据，都属于硬失败；可以换用下一
-等价来源，但不得把不等价字段拼接后继续评分。原始导出中截止日后的行可以先排除并
-记录数量。少于 200 根历史、稍旧或无基准是软警告。
+等价来源，但不得把不等价字段拼接后继续评分。唯一例外是上述明确关闭量能证据的
+价格结构研究模式。原始导出中截止日后的行可以先排除并记录数量。少于 200 根历史、
+稍旧或无基准是软警告。
 
 `retryable` 表示是否适合同源重试；`fallback_allowed` 表示是否可换到
-独立来源，两者不得混为一个开关。
+独立来源，两者不得混为一个开关。只有一个远程 adapter 时，即使尝试对象包含
+`fallback_allowed`，也不能宣称已经存在实际远程备援。

@@ -59,7 +59,13 @@ _MARKET_DATA_SCOPES = {
     "unknown",
     "user_supplied_not_verified",
 }
-_VOLUME_SCOPES = _MARKET_DATA_SCOPES
+_VOLUME_SCOPES = {
+    "full_listing",
+    "partial_venue",
+    "unknown",
+    "user_supplied_not_verified",
+    "vendor_reported_unverified",
+}
 _VOLUME_BASES = {
     "raw",
     "split_adjusted",
@@ -781,6 +787,16 @@ class ProviderRouter:
                 fallback_allowed=True,
             )
         if (
+            result.volume_scope == "vendor_reported_unverified"
+            and dataset.volume_evidence_eligible
+        ):
+            raise ProviderFailure(
+                "Unverified provider volume was eligible for Cycle confirmation",
+                code="UNVERIFIED_VOLUME_EVIDENCE_ENABLED",
+                retryable=False,
+                fallback_allowed=True,
+            )
+        if (
             result.volume_completeness is None
             and result.volume_scope != "user_supplied_not_verified"
         ):
@@ -800,16 +816,24 @@ class ProviderRouter:
                 retryable=False,
                 fallback_allowed=True,
             )
-        if result.volume_basis == "unknown":
+        if (
+            result.volume_basis == "unknown"
+            and dataset.volume_evidence_eligible
+        ):
             raise ProviderFailure(
-                "Provider volume adjustment basis is unknown",
+                "Provider volume adjustment basis is unknown while volume "
+                "evidence is enabled",
                 code="UNKNOWN_VOLUME_BASIS",
                 retryable=False,
                 fallback_allowed=True,
             )
-        if result.zero_volume_policy in {"missing_as_zero", "unknown"}:
+        if result.zero_volume_policy == "missing_as_zero" or (
+            result.zero_volume_policy == "unknown"
+            and dataset.volume_evidence_eligible
+        ):
             raise ProviderFailure(
-                "Provider may encode missing volume as zero",
+                "Provider zero-volume semantics are unsafe while volume "
+                "evidence is enabled",
                 code="UNSAFE_ZERO_VOLUME_POLICY",
                 retryable=False,
                 fallback_allowed=True,

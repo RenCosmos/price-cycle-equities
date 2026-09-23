@@ -25,8 +25,8 @@ from .market_rules import RuleResolutionStatus, rules_at
 from .parameters import ResearchParameters
 
 
-SCHEMA_VERSION = "1.1.0"
-ENGINE_VERSION = "0.2.0-alpha.2-dev.2"
+SCHEMA_VERSION = "1.2.0"
+ENGINE_VERSION = "0.2.0-alpha.2-dev.3"
 STRATEGY_SPEC_VERSION = "1.0.1-draft"
 
 
@@ -209,6 +209,12 @@ def build_report(
         or zero_volume_policy != "reported_zero_only"
     ):
         warnings.append("VOLUME_QUALITY_NOT_PROVIDER_VERIFIED")
+    if dataset.instrument_identity_assurance != "provider_master_verified":
+        warnings.append(
+            "INSTRUMENT_IDENTITY_NOT_PROVIDER_VERIFIED"
+        )
+    if not dataset.volume_evidence_eligible:
+        warnings.append("VOLUME_CONFIRMATION_DISABLED")
     fallback_used = bool(diagnostics.get("data_provider_fallback_used", False))
     if fallback_used:
         warnings.append("DATA_PROVIDER_FALLBACK_USED")
@@ -235,6 +241,11 @@ def build_report(
         warnings.append("MARKET_RULES_UNKNOWN")
 
     data_quality_status = "OK" if not warnings else "PARTIAL"
+    evidence_mode = (
+        "price_structure_only_volume_unconfirmed"
+        if not dataset.volume_evidence_eligible
+        else "price_and_volume"
+    )
     supported_assessments = tuple(
         assessment
         for assessment in assessments
@@ -253,7 +264,16 @@ def build_report(
         "institutional_sponsorship",
         "broker_execution_rules",
         "live_instrument_trading_state",
+        "weekly_structure_confirmation",
     ]
+    if dataset.instrument_identity_assurance != "provider_master_verified":
+        missing_capabilities.append(
+            "provider_verified_instrument_master_identity"
+        )
+    if not dataset.volume_evidence_eligible:
+        missing_capabilities.append("verified_complete_volume_semantics")
+    if dataset.price_basis.value != "raw":
+        missing_capabilities.append("point_in_time_adjusted_price_vintage")
     if market_rules.status is not RuleResolutionStatus.RESOLVED:
         missing_capabilities.append("fully_resolved_dated_market_rule_snapshot")
 
@@ -334,6 +354,7 @@ def build_report(
             "venue": dataset.venue,
             "segment": dataset.segment,
             "security_type": dataset.security_type,
+            "identity_assurance": dataset.instrument_identity_assurance,
             "price_basis": dataset.price_basis.value,
             "source": dataset.source,
             "input_filename": input_filename,
@@ -342,6 +363,10 @@ def build_report(
         "market_context": {
             "benchmark_symbol": dataset.benchmark_symbol,
             "technical_snapshot": _technical_snapshot(latest),
+            "weekly_structure": {
+                "status": "UNKNOWN",
+                "reason": "The deterministic engine currently analyzes daily bars only.",
+            },
             "market_rules_status": market_rules.status.value,
             "market_rules": json_value(market_rules),
             "execution_ready": market_rules.execution_ready,
@@ -370,6 +395,7 @@ def build_report(
                 0,
             ),
             "calendar_days_stale": calendar_days_stale,
+            "evidence_mode": evidence_mode,
             "warnings": warnings,
             "missing_capabilities": missing_capabilities,
         },
@@ -484,6 +510,11 @@ def render_markdown(report: dict[str, object]) -> str:
             "当前无可确认阶段：八个方向化候选均未获得正证据支持，"
             "因此结论保持 **UNKNOWN**。这不等于没有行情，只表示现有输入不足以支持阶段判断。"
         )
+    if quality["evidence_mode"] == "price_structure_only_volume_unconfirmed":
+        conclusion += (
+            " 当前仅识别价格结构候选；成交量语义尚未核验，"
+            "所有量能确认均保持 **UNKNOWN**。"
+        )
 
     lines = [
         f"# {instrument['symbol']} 价格循环研究报告",
@@ -491,10 +522,12 @@ def render_markdown(report: dict[str, object]) -> str:
         "## 1. 范围与免责声明",
         "",
         f"- 市场：{instrument['market']}",
-        f"- 截止日期：{report['as_of']} 收盘后",
+        f"- 请求截止日期：{report['as_of']}",
+        f"- 实际最新已完成日线：{quality['latest_bar_date']}",
         f"- 数据来源：{instrument['source']}",
         f"- 数据提供器：{lineage['selected_provider_id']}",
         f"- 价格口径：{instrument['price_basis']}",
+        f"- 标的身份保证：{instrument['identity_assurance']}",
         "- 本报告用于研究，不是交易订单，也不承诺收益。",
         "",
         "## 2. 一句话结论",
@@ -566,6 +599,7 @@ def render_markdown(report: dict[str, object]) -> str:
             f"- 基准：{_fmt(context['benchmark_symbol'])}",
             f"- RS20：{_fmt(snapshot['relative_strength_20'])}",
             f"- RS60：{_fmt(snapshot['relative_strength_60'])}",
+            "- 周线结构：UNKNOWN（当前确定性引擎只分析日线）",
             f"- 市场规则状态：{context['market_rules_status']}",
             f"- 交易场所：{_fmt(instrument['venue'])}",
             f"- 板块：{_fmt(instrument['segment'])}",
@@ -600,6 +634,13 @@ def render_markdown(report: dict[str, object]) -> str:
             f"- 使用行数：{quality['rows_used']}",
             f"- 最新数据日：{quality['latest_bar_date']}",
             f"- 距截止日：{quality['calendar_days_stale']} 个自然日",
+            f"- 证据模式：{quality['evidence_mode']}",
+            (
+                "- 量能确认：已禁用；阶段事件仅代表价格结构候选，"
+                "量能证据为 UNKNOWN"
+                if quality["evidence_mode"] == "price_structure_only_volume_unconfirmed"
+                else "- 量能确认：按已验证输入启用"
+            ),
             f"- 警告：{', '.join(quality['warnings']) if quality['warnings'] else '无'}",
             f"- 是否发生来源回退：{'是' if lineage['fallback_used'] else '否'}",
             f"- 价格口径验证：{lineage['price_basis_assertion']}",

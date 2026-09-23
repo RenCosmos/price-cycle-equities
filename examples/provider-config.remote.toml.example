@@ -1,0 +1,15 @@
+schema_version = 1
+allow_network = true
+
+[providers.manual_csv]
+enabled = false
+
+[providers.tushare]
+enabled = false
+
+[providers.eodhd]
+enabled = true
+
+[routes.daily_bars]
+CN = ["eodhd"]
+US = ["eodhd"]

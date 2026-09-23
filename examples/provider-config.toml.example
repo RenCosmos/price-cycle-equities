@@ -1,4 +1,4 @@
-# Offline configuration example for v0.2.0-alpha.2-dev.2.
+# Offline CSV configuration example for v0.2.0-alpha.2-dev.3.
 # This file is never discovered automatically and does not contain credentials.
 schema_version = 1
 allow_network = false

@@ -147,7 +147,11 @@ def build_features(
     sma50 = sma(closes, params.sma_intermediate_period)
     sma200 = sma(closes, params.sma_long_period)
     atr14 = atr(bars, params.atr_period)
-    volume_sma20 = sma(volumes, params.volume_average_period)
+    volume_sma20 = (
+        sma(volumes, params.volume_average_period)
+        if dataset.volume_evidence_eligible
+        else [None] * len(bars)
+    )
     prior_high20 = prior_rolling_high(highs, params.breakout_lookback)
     prior_low20 = prior_rolling_low(lows, params.breakout_lookback)
     range_sma10 = sma(ranges, params.contraction_short_period)

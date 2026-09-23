@@ -10,9 +10,11 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from tests.helpers import SCRIPT_ROOT
 
+import price_cycle.cli as cli
 
 ENTRYPOINT = SCRIPT_ROOT / "analyze.py"
 
@@ -73,6 +75,7 @@ class CliTests(unittest.TestCase):
     def _run(self, command: list[str]) -> subprocess.CompletedProcess[str]:
         environment = os.environ.copy()
         environment["PYTHONUTF8"] = "1"
+        environment.pop("PRICE_CYCLE_EODHD_TOKEN", None)
         return subprocess.run(
             command,
             capture_output=True,
@@ -181,6 +184,146 @@ class CliTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 2)
             self.assertIn("must be supplied together", result.stderr)
+
+    def test_csv_source_is_required_only_in_csv_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bars_path = root / "bars.csv"
+            as_of = self._write_bars(bars_path, count=2)
+            command = self._command(bars_path, root / "reports", as_of)
+            source_index = command.index("--source")
+            del command[source_index : source_index + 2]
+            result = self._run(command)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("--source is required with --input", result.stderr)
+
+    def test_csv_and_remote_modes_are_mutually_exclusive(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bars_path = root / "bars.csv"
+            as_of = self._write_bars(bars_path, count=2)
+            result = self._run(
+                self._command(
+                    bars_path,
+                    root / "reports",
+                    as_of,
+                    "--provider-config",
+                    str(
+                        Path(__file__).resolve().parents[1]
+                        / "examples"
+                        / "provider-config.remote.toml.example"
+                    ),
+                )
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("not allowed with argument", result.stderr)
+
+    def test_remote_mode_fails_closed_before_network_when_credential_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = (
+                Path(__file__).resolve().parents[1]
+                / "examples"
+                / "provider-config.remote.toml.example"
+            )
+            command = [
+                sys.executable,
+                str(ENTRYPOINT),
+                "--provider-config",
+                str(config),
+                "--market",
+                "US",
+                "--symbol",
+                "AAPL",
+                "--as-of",
+                "2026-08-31",
+                "--price-basis",
+                "split_adjusted",
+                "--output-dir",
+                str(root / "reports"),
+            ]
+            result = self._run(command)
+            self.assertEqual(result.returncode, 3)
+            self.assertIn("Data error", result.stderr)
+            self.assertIn("CREDENTIAL_ENV_MISSING", result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertFalse((root / "reports").exists())
+
+            result_with_source = self._run(
+                [*command, "--source", "not-valid-in-remote-mode"]
+            )
+            self.assertEqual(result_with_source.returncode, 2)
+            self.assertIn("--source is only valid with --input", result_with_source.stderr)
+
+    def test_remote_run_uses_market_default_benchmark_and_preserves_override(self) -> None:
+        captured_requests = []
+        loaded_sentinel = object()
+        registry_sentinel = object()
+        configuration_sentinel = object()
+
+        class CapturingRouter:
+            def __init__(self, registry: object) -> None:
+                self.registry = registry
+
+            def load(self, selected_request: object, order: object) -> object:
+                self.assert_registry()
+                self.assert_order(order)
+                captured_requests.append(selected_request)
+                return loaded_sentinel
+
+            def assert_registry(self) -> None:
+                if self.registry is not registry_sentinel:
+                    raise AssertionError("unexpected registry")
+
+            @staticmethod
+            def assert_order(order: object) -> None:
+                if order != ("eodhd",):
+                    raise AssertionError("unexpected route")
+
+        cases = (
+            ("CN", "600519", None, "510300"),
+            ("US", "AAPL", None, "VTI"),
+            ("US", "AAPL", "QQQ", "QQQ"),
+        )
+        with (
+            patch.object(
+                cli,
+                "load_provider_config",
+                return_value=configuration_sentinel,
+            ),
+            patch.object(
+                cli,
+                "build_remote_registry",
+                return_value=registry_sentinel,
+            ),
+            patch.object(
+                cli,
+                "resolve_remote_route",
+                return_value=("eodhd",),
+            ),
+            patch.object(cli, "ProviderRouter", CapturingRouter),
+            patch.object(
+                cli,
+                "analyze_loaded_result",
+                return_value=(Path("report.json"), Path("report.md"), []),
+            ),
+        ):
+            for market, symbol, override, expected in cases:
+                arguments = [
+                    "--provider-config", "providers.toml",
+                    "--market", market,
+                    "--symbol", symbol,
+                    "--as-of", "2026-08-31",
+                    "--price-basis", "split_adjusted",
+                ]
+                if override is not None:
+                    arguments.extend(("--benchmark-symbol", override))
+                namespace = cli.build_parser().parse_args(arguments)
+                cli.run(namespace)
+                self.assertEqual(
+                    captured_requests[-1].benchmark_symbol,
+                    expected,
+                )
 
     def test_existing_report_is_not_overwritten_without_flag(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

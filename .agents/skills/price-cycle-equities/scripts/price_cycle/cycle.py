@@ -192,6 +192,14 @@ def _all_true(*conditions: bool | None) -> bool:
     return all(condition is True for condition in conditions)
 
 
+def _confirmation_outcome(*conditions: bool | None) -> str:
+    if any(condition is False for condition in conditions):
+        return "failed_or_mixed"
+    if any(condition is None for condition in conditions):
+        return "confirmation_unknown"
+    return "supported"
+
+
 def _latest_event(
     events: list[ObservedEvent] | tuple[ObservedEvent, ...],
     event_type: str,
@@ -320,15 +328,18 @@ def detect_events(
                 )
             )
 
-        wedge_pop_signal = _all_true(
+        wedge_pop_price_signal = _all_true(
             enough_history,
             breakout_up,
             _above_band(row),
             contraction,
             ema_tight,
-            volume_confirm,
             strong_close,
             direction != "UP",
+        )
+        wedge_pop_signal = (
+            wedge_pop_price_signal
+            and volume_confirm is not False
         )
         wedge_pop_event: ObservedEvent | None = None
         if wedge_pop_signal:
@@ -353,7 +364,16 @@ def detect_events(
                 leg_id=current_leg,
                 anchor_event_id=None,
                 sequence_no=None,
-                payload={"pivot": row.prior_high20 or row.bar.close},
+                payload={
+                    "pivot": row.prior_high20 or row.bar.close,
+                    **(
+                        {
+                            "confirmation": "price_structure_only_volume_unknown"
+                        }
+                        if volume_confirm is None
+                        else {}
+                    ),
+                },
                 evidence=evidence,
             )
             events.append(wedge_pop_event)
@@ -392,27 +412,28 @@ def detect_events(
                     anchor_event_id=active_wedge_pop.event_id,
                     sequence_no=1,
                     payload={
-                        "outcome": (
-                            "supported"
-                            if _all_true(held_band, _up_slopes(row), quiet_volume)
-                            else "failed_or_mixed"
+                        "outcome": _confirmation_outcome(
+                            held_band, _up_slopes(row), quiet_volume
                         )
                     },
                     evidence=evidence,
                 )
             )
 
-        base_up_signal = _all_true(
+        base_up_price_signal = _all_true(
             enough_history,
             direction == "UP",
             breakout_up,
             _above_band(row),
             _up_slopes(row),
             contraction,
-            volume_confirm,
             strong_close,
             wedge_pop_event is None,
             index - last_up_base_index >= params.min_bars_between_breaks,
+        )
+        base_up_signal = (
+            base_up_price_signal
+            and volume_confirm is not False
         )
         if base_up_signal:
             up_base_count += 1
@@ -436,6 +457,15 @@ def detect_events(
                     payload={
                         "base_id": f"{current_leg}:U:{index}",
                         "pivot": row.prior_high20 or row.bar.close,
+                        **(
+                            {
+                                "confirmation": (
+                                    "price_structure_only_volume_unknown"
+                                )
+                            }
+                            if volume_confirm is None
+                            else {}
+                        ),
                     },
                     evidence=evidence,
                 )
@@ -599,27 +629,28 @@ def detect_events(
                     anchor_event_id=active_wedge_drop.event_id,
                     sequence_no=1,
                     payload={
-                        "outcome": (
-                            "supported"
-                            if _all_true(rejected_band, _down_slopes(row), quiet_volume)
-                            else "failed_or_mixed"
+                        "outcome": _confirmation_outcome(
+                            rejected_band, _down_slopes(row), quiet_volume
                         )
                     },
                     evidence=evidence,
                 )
             )
 
-        base_down_signal = _all_true(
+        base_down_price_signal = _all_true(
             enough_history,
             direction == "DOWN",
             breakout_down,
             _below_band(row),
             _down_slopes(row),
             contraction,
-            volume_confirm,
             weak_close,
             wedge_drop_event is None,
             index - last_down_base_index >= params.min_bars_between_breaks,
+        )
+        base_down_signal = (
+            base_down_price_signal
+            and volume_confirm is not False
         )
         if base_down_signal:
             down_base_count += 1
@@ -643,6 +674,15 @@ def detect_events(
                     payload={
                         "base_id": f"{current_leg}:D:{index}",
                         "support": row.prior_low20 or row.bar.close,
+                        **(
+                            {
+                                "confirmation": (
+                                    "price_structure_only_volume_unknown"
+                                )
+                            }
+                            if volume_confirm is None
+                            else {}
+                        ),
                     },
                     evidence=evidence,
                 )

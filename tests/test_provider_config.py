@@ -24,14 +24,18 @@ from price_cycle.providers import (
     ProviderConfiguration,
     ProviderDescriptor,
     ProviderRoute,
+    ProviderRuntimeError,
     ProviderSettings,
     SecretValue,
+    build_remote_registry,
     load_provider_config,
+    resolve_remote_route,
 )
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE_CONFIG = REPO_ROOT / "examples" / "provider-config.toml.example"
+REMOTE_EXAMPLE_CONFIG = REPO_ROOT / "examples" / "provider-config.remote.toml.example"
 VALIDATOR = SCRIPT_ROOT / "validate_provider_config.py"
 
 
@@ -99,6 +103,42 @@ class ProviderConfigurationTests(unittest.TestCase):
         self.assertTrue(configuration.provider("manual_csv").enabled)
         self.assertFalse(configuration.provider("tushare").enabled)
         self.assertFalse(configuration.provider("eodhd").enabled)
+
+    def test_remote_example_routes_both_markets_to_eodhd_without_a_literal_secret(self) -> None:
+        configuration = load_provider_config(REMOTE_EXAMPLE_CONFIG)
+        self.assertTrue(configuration.allow_network)
+        self.assertEqual(
+            configuration.route_for("daily_bars", Market.CN),
+            ("eodhd",),
+        )
+        self.assertEqual(
+            configuration.route_for("daily_bars", Market.US),
+            ("eodhd",),
+        )
+        self.assertTrue(configuration.provider("eodhd").enabled)
+        summary = configuration.public_summary(
+            check_credentials=True,
+            resolver=EnvironmentCredentialResolver({}),
+        )
+        eodhd = next(
+            item for item in summary["providers"]
+            if item["provider_id"] == "eodhd"
+        )
+        self.assertEqual(eodhd["credentials"][0]["status"], "missing")
+        self.assertNotIn("api_token", REMOTE_EXAMPLE_CONFIG.read_text(encoding="utf-8"))
+
+        registry = build_remote_registry(configuration)
+        self.assertIsNotNone(registry.get("eodhd"))
+        self.assertEqual(
+            resolve_remote_route(configuration, registry, market=Market.CN),
+            ("eodhd",),
+        )
+
+    def test_remote_runtime_refuses_an_offline_configuration(self) -> None:
+        configuration = load_provider_config(EXAMPLE_CONFIG)
+        with self.assertRaises(ProviderRuntimeError) as caught:
+            build_remote_registry(configuration)
+        self.assertEqual(caught.exception.code, "NETWORK_DISABLED")
 
     def test_config_is_strict_and_does_not_echo_literal_secret(self) -> None:
         marker = "fixture-secret-value"
